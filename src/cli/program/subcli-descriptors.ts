@@ -224,6 +224,11 @@ const subCliCommandCatalog = defineCommandDescriptorCatalog([
     hasSubcommands: true,
   },
   {
+    name: "spawn",
+    description: "Spawn a subagent directly",
+    hasSubcommands: false,
+  },
+  {
     name: "skills",
     description: "List and inspect available skills",
     hasSubcommands: true,
