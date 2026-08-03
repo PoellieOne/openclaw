@@ -102,3 +102,40 @@ export type BlockedRuntimeResult = {
   sanitizedMessage: string;
   isBlocked: true;
 };
+
+export type ReadinessRouteClassification =
+  | "REAL_MODEL_EXECUTION_ROUTE"
+  | "TEST_MODEL_EXECUTION_ROUTE"
+  | "TRUSTED_NON_MODEL_ROUTE"
+  | "UNKNOWN_OR_MISSING_ROUTE";
+
+export type ReadinessGovernance =
+  | {
+      governed: true;
+      state: ReadinessRunState;
+    }
+  | {
+      governed: false;
+      reason: "EXPLICIT_LEGACY_ROLLOUT_EXCEPTION" | "TRUSTED_NON_MODEL_ROUTE";
+    };
+
+export type GovernedReadinessProjection = {
+  id: string;
+  version: string;
+  content: string;
+  contentHash?: string;
+};
+
+export type ProjectionLoadResult =
+  | { ok: true; projection: GovernedReadinessProjection }
+  | { ok: false; code: string; message: string };
+
+export type BootstrapAdapterInput = {
+  governance: ReadinessGovernance;
+  projection: GovernedReadinessProjection | null;
+  bootstrapFiles: readonly { name: string; path: string; content?: string; missing: boolean }[];
+};
+
+export type BootstrapAdapterResult =
+  | { ok: true; files: { name: string; path: string; content?: string; missing: boolean }[] }
+  | { ok: false; code: string; message: string };
