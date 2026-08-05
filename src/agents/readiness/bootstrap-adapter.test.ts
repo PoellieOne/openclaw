@@ -43,8 +43,8 @@ describe("applyReadinessBootstrapAdapter", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].name).toBe("readiness-governance");
-      expect(result.files[0].missing).toBe(false);
+      expect(result.files[0]!.name).toBe("readiness-governance");
+      expect(result.files[0]!.missing).toBe(false);
     }
   });
 
@@ -83,8 +83,8 @@ describe("applyReadinessBootstrapAdapter", () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.files[0].content).toBe(projection.content);
-      expect(result.files[0].path).toContain(projection.id);
+      expect(result.files[0]!.content).toBe(projection.content);
+      expect(result.files[0]!.path).toContain(projection.id);
     }
   });
 
@@ -98,7 +98,7 @@ describe("applyReadinessBootstrapAdapter", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.files).toHaveLength(files.length);
-      expect(result.files[0].name).toBe(files[0].name);
+      expect(result.files[0]!.name).toBe(files[0]!.name);
     }
   });
 
@@ -106,7 +106,7 @@ describe("applyReadinessBootstrapAdapter", () => {
     const input: {
       governance: ReadinessGovernance;
       projection: null;
-      bootstrapFiles: typeof makeBootstrapFiles;
+      bootstrapFiles: ReturnType<typeof makeBootstrapFiles>;
     } = {
       governance: makeUngoverned(),
       projection: null,

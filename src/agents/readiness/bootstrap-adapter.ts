@@ -1,10 +1,5 @@
 import { ReadinessCode } from "./codes.js";
-import type {
-  ReadinessGovernance,
-  GovernedReadinessProjection,
-  BootstrapAdapterInput,
-  BootstrapAdapterResult,
-} from "./types.js";
+import type { BootstrapAdapterInput, BootstrapAdapterResult } from "./types.js";
 
 export function applyReadinessBootstrapAdapter(
   input: BootstrapAdapterInput,
@@ -20,8 +15,6 @@ export function applyReadinessBootstrapAdapter(
       message: "governed run requires a readiness projection",
     };
   }
-
-  const filtered = input.bootstrapFiles.filter((f) => !f.missing);
 
   const projectionEntry = {
     name: "readiness-governance" as const,

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ReadinessCode } from "./codes.js";
 import { evaluateReadiness } from "./evaluator.js";
-import type { ResolvedReadinessPolicy } from "./types.js";
+import type { ResolvedReadinessPolicy, ReadinessAuthorityLevel } from "./types.js";
 
 const NOW = 2000000000000;
 const FUTURE = new Date(NOW + 86400000).toISOString();
@@ -12,7 +12,7 @@ function makePolicy(
   },
 ): ResolvedReadinessPolicy {
   return {
-    source: { sourceId: "test", authorityLevel: 10 as unknown as number },
+    source: { sourceId: "test", authorityLevel: 10 as ReadinessAuthorityLevel },
     environmentAttestation: "PRODUCTION",
     projectionBindingRequired: false,
     resolvedAt: NOW,
@@ -110,6 +110,46 @@ describe("evaluateReadiness", () => {
     const result = evaluateReadiness(policy, evidence, null, null, NOW);
     expect(result.outcome).toBe("BLOCKED");
     expect(result.classification).toBe(ReadinessCode.DUPLICATE_KEY);
+  });
+
+  it("REQUIRED with binding match permits READY", () => {
+    const policy = makePolicy({ disposition: "REQUIRED", projectionBindingRequired: true });
+    const evidence = JSON.stringify({
+      contract_version: "readiness.v1",
+      decision: "READY",
+      valid_until: FUTURE,
+      projection_id: "expected-id",
+      projection_version: "1.0.0",
+    });
+    const result = evaluateReadiness(policy, evidence, "expected-id", "1.0.0", NOW);
+    expect(result.outcome).toBe("EVIDENCE_READY");
+    expect(result.decision).toBe("READY");
+  });
+
+  it("maximum-age fallback used only when valid_until is absent", () => {
+    const policy = makePolicy({ disposition: "REQUIRED", maximumAgeMs: 86400000 });
+    const evaluatedAt = new Date(NOW).toISOString();
+    const evidence = JSON.stringify({
+      contract_version: "readiness.v1",
+      decision: "READY",
+      evaluated_at: evaluatedAt,
+    });
+    const result = evaluateReadiness(policy, evidence, null, null, NOW);
+    expect(result.outcome).toBe("EVIDENCE_READY");
+    expect(result.decision).toBe("READY");
+  });
+
+  it("maximum-age fallback blocks when evaluated_at is too old", () => {
+    const policy = makePolicy({ disposition: "REQUIRED", maximumAgeMs: 1000 });
+    const oldEval = new Date(NOW - 5000).toISOString();
+    const evidence = JSON.stringify({
+      contract_version: "readiness.v1",
+      decision: "READY",
+      evaluated_at: oldEval,
+    });
+    const result = evaluateReadiness(policy, evidence, null, null, NOW);
+    expect(result.outcome).toBe("BLOCKED");
+    expect(result.classification).toBe(ReadinessCode.READINESS_EXPIRED);
   });
 
   it("bypass and evidence-ready have distinct outcomes", () => {

@@ -389,4 +389,6 @@ export type RunEmbeddedAgentParams = {
   cleanupBundleMcpOnRunEnd?: boolean;
   /** Mark explicit one-shot local CLI runs so plugin tools can release resources promptly. */
   oneShotCliRun?: boolean;
+  /** Readiness governance carrier for the primary pre-model gate. */
+  readinessGovernance?: import("../../readiness/types.js").ReadinessGovernance;
 };

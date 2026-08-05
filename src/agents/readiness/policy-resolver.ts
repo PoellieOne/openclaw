@@ -1,15 +1,9 @@
 import { ReadinessCode } from "./codes.js";
 import type {
-  EnvironmentAttestation,
   ReadinessAuthorityLevel,
-  ReadinessPolicyCandidate,
   ReadinessPolicyResolutionInput,
   ResolvedReadinessPolicy,
 } from "./types.js";
-
-function isHigherAuthority(a: ReadinessAuthorityLevel, b: ReadinessAuthorityLevel): boolean {
-  return a < b;
-}
 
 export function resolveReadinessPolicy(
   input: ReadinessPolicyResolutionInput,
@@ -52,7 +46,7 @@ export function resolveReadinessPolicy(
     return 0;
   });
 
-  const highest = sorted[0];
+  const highest = sorted[0]!;
   const sameLevel = sorted.filter(
     (c) => c.authorityLevel === highest.authorityLevel && c.sourceId !== highest.sourceId,
   );

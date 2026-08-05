@@ -131,9 +131,9 @@ describe("parseReadinessEnvelope", () => {
       if (result.ok) {
         expect(result.envelope.evidence.decision).toBe("READY");
         expect(result.projection).toBeDefined();
-        expect(result.projection.id).toBe("test-projection-v1");
-        expect(result.projection.version).toBe("1.0.0");
-        expect(result.projection.content).toBe("Test projection content");
+        expect(result.projection!.id).toBe("test-projection-v1");
+        expect(result.projection!.version).toBe("1.0.0");
+        expect(result.projection!.content).toBe("Test projection content");
         expect(result.evidenceJson).toBeTruthy();
       }
     });

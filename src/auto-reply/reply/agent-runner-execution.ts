@@ -17,6 +17,7 @@ import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/
 import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import { LiveSessionModelSwitchError } from "../../agents/live-model-switch-error.js";
 import { leaseMcpAppModelContextForTurn } from "../../agents/mcp-app-model-context.js";
+import type { ReadinessGovernance } from "../../agents/readiness/types.js";
 import { isAgentRunRestartAbortReason } from "../../agents/run-termination.js";
 import { createAgentPatchedSessionModelRunGuard } from "../../agents/session-model-auto-revert.js";
 import type { SessionEntry } from "../../config/sessions.js";
@@ -289,6 +290,19 @@ async function executeAgentTurnInternalWithRetryState(
       storePath: params.storePath,
     });
 
+  const readinessGovernance: ReadinessGovernance | undefined =
+    params.followupRun.run.readinessGovernance;
+  if (readinessGovernance?.governed === true && !readinessGovernance.state.mayExecute()) {
+    return {
+      kind: "blocked" as const,
+      blockedResult: readinessGovernance.state.toBlockedResult(),
+      resolved: {
+        provider: params.followupRun.run.provider,
+        model: params.followupRun.run.model,
+      },
+    };
+  }
+
   while (true) {
     try {
       const presentation = createAgentTurnPresentation({
@@ -544,6 +558,16 @@ export async function executeAgentTurn(params: AgentTurnParams): Promise<AgentTu
         commitTerminalOutcome();
       }
     });
+    if (internal.kind === "blocked") {
+      return {
+        runId,
+        outcome: {
+          kind: "blocked",
+          blockedResult: internal.blockedResult,
+          resolved: internal.resolved,
+        },
+      };
+    }
     if (internal.kind === "final") {
       if (isReplyOperationRestartAbort(executionParams.replyOperation)) {
         return { runId, outcome: { kind: "aborted", reason: "restart" } };

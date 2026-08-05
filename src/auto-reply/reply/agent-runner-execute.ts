@@ -1,6 +1,10 @@
 import crypto from "node:crypto";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { isLikelyContextOverflowError } from "../../agents/embedded-agent-helpers/errors.js";
+import { loadCanonicalReadinessEnvelope } from "../../agents/readiness/canonical-envelope-reader.js";
+import { createReadinessProjectionLoader } from "../../agents/readiness/projection-loader.js";
+import { prepareReadinessForRun } from "../../agents/readiness/run-preparation.js";
+import type { ReadinessRouteClassification } from "../../agents/readiness/types.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
@@ -298,6 +302,31 @@ export async function executePreparedReplyAgentRun(
   // Suppressed delivery persists only the user transcript; crashed suppressed runs die
   // silently. Deliverable turns atomically persist transcript plus recovery ownership.
   await turnAdoptionLifecycle?.onAdopted();
+  const routeClassification: ReadinessRouteClassification = "REAL_MODEL_EXECUTION_ROUTE";
+  const envelopeResult = loadCanonicalReadinessEnvelope();
+  let evidenceJson: string | null = null;
+  let projectionId: string | null = null;
+  let projectionVersion: string | null = null;
+  if (envelopeResult.ok) {
+    evidenceJson = envelopeResult.evidenceJson;
+    const loader = createReadinessProjectionLoader({ evidenceJson });
+    const projectionResult = await loader({});
+    if (projectionResult.ok) {
+      projectionId = projectionResult.projection.id;
+      projectionVersion = projectionResult.projection.version;
+    }
+  }
+  const preparationResult = prepareReadinessForRun({
+    routeClassification,
+    evidenceJson,
+    projectionId,
+    projectionVersion,
+    now: Date.now(),
+  });
+  if (!preparationResult.ok) {
+    return returnWithQueuedFollowupDrain({ text: SILENT_REPLY_TOKEN });
+  }
+  followupRun.run.readinessGovernance = preparationResult.governance;
   const runOutcome = await withBeforeAgentReplyObserver(
     {
       beforeDispatch: async () => {
@@ -398,6 +427,9 @@ export async function executePreparedReplyAgentRun(
   activeSessionEntry = getActiveSessionEntry();
   activeIsNewSession = getActiveIsNewSession();
 
+  if (runOutcome.outcome.kind === "blocked") {
+    return returnWithQueuedFollowupDrain({ text: SILENT_REPLY_TOKEN });
+  }
   if (runOutcome.outcome.kind !== "settled") {
     if (runOutcome.outcome.kind === "rejected" && !replyOperation.result) {
       replyOperation.fail("run_failed", new Error("reply operation exited with final payload"));

@@ -84,7 +84,7 @@ function requireSessionEntry(entry: SessionFileEntry | null): SessionFileEntry {
 
 async function upsertTestSessionEntries(
   storePath: string,
-  entries: Record<string, Parameters<typeof upsertSessionEntry>[1]>,
+  entries: Record<string, Parameters<typeof upsertSessionEntry>[1] & { sessionFile?: string }>,
 ): Promise<void> {
   fsSync.mkdirSync(path.dirname(storePath), { recursive: true });
   for (const [sessionKey, entry] of Object.entries(entries)) {

@@ -86,18 +86,14 @@ function isWhitespace(c: number): boolean {
 }
 
 function skipWhitespace(st: ParseState): void {
-  while (st.pos < st.len && isWhitespace(st.chars[st.pos].charCodeAt(0))) {
+  while (st.pos < st.len && isWhitespace(st.chars[st.pos]!.charCodeAt(0))) {
     st.pos++;
   }
 }
 
 function peek(st: ParseState): string | null {
   skipWhitespace(st);
-  return st.pos < st.len ? st.chars[st.pos] : null;
-}
-
-function advance(st: ParseState): string {
-  return st.chars[st.pos++];
+  return st.pos < st.len ? st.chars[st.pos]! : null;
 }
 
 function expect(st: ParseState, c: string): boolean {
@@ -156,19 +152,19 @@ function scanValue(st: ParseState, depth: number): boolean {
 }
 
 function scanNumber(st: ParseState): boolean {
-  if (st.pos < st.len && st.chars[st.pos] === "-") st.pos++;
-  if (st.pos >= st.len || st.chars[st.pos] < "0" || st.chars[st.pos] > "9") return false;
-  while (st.pos < st.len && st.chars[st.pos] >= "0" && st.chars[st.pos] <= "9") st.pos++;
-  if (st.pos < st.len && st.chars[st.pos] === ".") {
+  if (st.pos < st.len && st.chars[st.pos]! === "-") st.pos++;
+  if (st.pos >= st.len || st.chars[st.pos]! < "0" || st.chars[st.pos]! > "9") return false;
+  while (st.pos < st.len && st.chars[st.pos]! >= "0" && st.chars[st.pos]! <= "9") st.pos++;
+  if (st.pos < st.len && st.chars[st.pos]! === ".") {
     st.pos++;
-    if (st.pos >= st.len || st.chars[st.pos] < "0" || st.chars[st.pos] > "9") return false;
-    while (st.pos < st.len && st.chars[st.pos] >= "0" && st.chars[st.pos] <= "9") st.pos++;
+    if (st.pos >= st.len || st.chars[st.pos]! < "0" || st.chars[st.pos]! > "9") return false;
+    while (st.pos < st.len && st.chars[st.pos]! >= "0" && st.chars[st.pos]! <= "9") st.pos++;
   }
-  if (st.pos < st.len && (st.chars[st.pos] === "e" || st.chars[st.pos] === "E")) {
+  if (st.pos < st.len && (st.chars[st.pos]! === "e" || st.chars[st.pos]! === "E")) {
     st.pos++;
-    if (st.pos < st.len && (st.chars[st.pos] === "+" || st.chars[st.pos] === "-")) st.pos++;
-    if (st.pos >= st.len || st.chars[st.pos] < "0" || st.chars[st.pos] > "9") return false;
-    while (st.pos < st.len && st.chars[st.pos] >= "0" && st.chars[st.pos] <= "9") st.pos++;
+    if (st.pos < st.len && (st.chars[st.pos]! === "+" || st.chars[st.pos]! === "-")) st.pos++;
+    if (st.pos >= st.len || st.chars[st.pos]! < "0" || st.chars[st.pos]! > "9") return false;
+    while (st.pos < st.len && st.chars[st.pos]! >= "0" && st.chars[st.pos]! <= "9") st.pos++;
   }
   return true;
 }

@@ -46,7 +46,7 @@ type FollowupDeliveryDecision =
     }
   | {
       kind: "suppress";
-      reason: "send-policy" | "room-event" | "silent" | "message-tool-only" | "aborted";
+      reason: "send-policy" | "room-event" | "silent" | "message-tool-only" | "aborted" | "blocked";
     }
   | {
       kind: "retry-source-delivery";
@@ -79,6 +79,9 @@ export function resolveFollowupDeliveryDecision(params: {
     (execution.outcome.kind === "settled" && execution.outcome.abortReason)
   ) {
     return { kind: "suppress", reason: "aborted" };
+  }
+  if (execution.outcome.kind === "blocked") {
+    return { kind: "suppress", reason: "blocked" };
   }
   const sourcePolicy = resolveSourceReplyVisibilityPolicy({
     cfg: turn.config,

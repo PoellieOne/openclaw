@@ -35,18 +35,14 @@ export function parseReadinessJson(input: string): ReadinessParseResult {
   let pos = 0;
 
   function skipWhitespace(): void {
-    while (pos < len && isWhitespace(chars[pos].charCodeAt(0))) {
+    while (pos < len && isWhitespace(chars[pos]!.charCodeAt(0))) {
       pos++;
     }
   }
 
   function peek(): string | null {
     skipWhitespace();
-    return pos < len ? chars[pos] : null;
-  }
-
-  function advance(): string {
-    return chars[pos++];
+    return pos < len ? chars[pos]! : null;
   }
 
   function expect(c: string): boolean {
@@ -105,19 +101,19 @@ export function parseReadinessJson(input: string): ReadinessParseResult {
   }
 
   function scanNumber(): boolean {
-    if (pos < len && chars[pos] === "-") pos++;
-    if (pos >= len || chars[pos] < "0" || chars[pos] > "9") return false;
-    while (pos < len && chars[pos] >= "0" && chars[pos] <= "9") pos++;
-    if (pos < len && chars[pos] === ".") {
+    if (pos < len && chars[pos]! === "-") pos++;
+    if (pos >= len || chars[pos]! < "0" || chars[pos]! > "9") return false;
+    while (pos < len && chars[pos]! >= "0" && chars[pos]! <= "9") pos++;
+    if (pos < len && chars[pos]! === ".") {
       pos++;
-      if (pos >= len || chars[pos] < "0" || chars[pos] > "9") return false;
-      while (pos < len && chars[pos] >= "0" && chars[pos] <= "9") pos++;
+      if (pos >= len || chars[pos]! < "0" || chars[pos]! > "9") return false;
+      while (pos < len && chars[pos]! >= "0" && chars[pos]! <= "9") pos++;
     }
-    if (pos < len && (chars[pos] === "e" || chars[pos] === "E")) {
+    if (pos < len && (chars[pos]! === "e" || chars[pos]! === "E")) {
       pos++;
-      if (pos < len && (chars[pos] === "+" || chars[pos] === "-")) pos++;
-      if (pos >= len || chars[pos] < "0" || chars[pos] > "9") return false;
-      while (pos < len && chars[pos] >= "0" && chars[pos] <= "9") pos++;
+      if (pos < len && (chars[pos]! === "+" || chars[pos]! === "-")) pos++;
+      if (pos >= len || chars[pos]! < "0" || chars[pos]! > "9") return false;
+      while (pos < len && chars[pos]! >= "0" && chars[pos]! <= "9") pos++;
     }
     return true;
   }
@@ -203,7 +199,6 @@ export function parseReadinessJson(input: string): ReadinessParseResult {
     }
   }
 
-  const startPos = pos;
   skipWhitespace();
   if (pos >= len) {
     return { ok: false, code: ReadinessCode.EVIDENCE_MALFORMED, message: "empty input" };

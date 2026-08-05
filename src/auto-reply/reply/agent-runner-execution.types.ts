@@ -42,6 +42,11 @@ export type AgentTurnInternalResult =
       kind: "final";
       payload: ReplyPayload;
       resolved?: { provider: string; model: string };
+    }
+  | {
+      kind: "blocked";
+      blockedResult: import("../../agents/readiness/types.js").BlockedRuntimeResult;
+      resolved: { provider: string; model: string };
     };
 
 export type SettledAgentTurn = {
@@ -68,6 +73,11 @@ export type AgentTurnExecutionResult = {
         kind: "rejected";
         payload: ReplyPayload;
         resolved?: { provider: string; model: string };
+      }
+    | {
+        kind: "blocked";
+        blockedResult: import("../../agents/readiness/types.js").BlockedRuntimeResult;
+        resolved: { provider: string; model: string };
       };
 };
 

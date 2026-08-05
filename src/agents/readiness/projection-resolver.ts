@@ -1,5 +1,5 @@
 import { ReadinessCode } from "./codes.js";
-import type { GovernedReadinessProjection, ProjectionLoadResult } from "./types.js";
+import type { ProjectionLoadResult } from "./types.js";
 
 const MAX_PROJECTION_CONTENT_BYTES = 65536;
 

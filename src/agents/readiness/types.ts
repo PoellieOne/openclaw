@@ -112,7 +112,7 @@ export type ReadinessRouteClassification =
 export type ReadinessGovernance =
   | {
       governed: true;
-      state: ReadinessRunState;
+      state: import("./state.js").ReadinessRunState;
     }
   | {
       governed: false;

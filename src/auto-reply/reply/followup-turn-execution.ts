@@ -1,3 +1,7 @@
+import { loadCanonicalReadinessEnvelope } from "../../agents/readiness/canonical-envelope-reader.js";
+import { createReadinessProjectionLoader } from "../../agents/readiness/projection-loader.js";
+import { prepareReadinessForRun } from "../../agents/readiness/run-preparation.js";
+import type { ReadinessRouteClassification } from "../../agents/readiness/types.js";
 import { loadSessionEntryReadOnly } from "../../config/sessions/session-accessor.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import type { TemplateContext } from "../templating.js";
@@ -268,77 +272,119 @@ export async function executeFollowupTurn(params: {
       outcome: { kind: "rejected", payload: turn.preflightFailurePayload },
     };
   } else {
-    try {
-      execution = await executeAgentTurn({
-        commandBody: turn.queued.prompt,
-        transcriptCommandBody: turn.queued.transcriptPrompt,
-        followupRun: turn.queued,
-        sessionCtx,
-        replyOperation: turn.operation,
-        opts: progressOpts,
-        typingSignals,
-        blockReplyPipeline: null,
-        blockStreamingEnabled: false,
-        resolvedBlockStreamingBreak: turn.queued.run.blockReplyBreak,
-        applyReplyToMode: (payload) => payload,
-        shouldEmitToolResult,
-        shouldEmitToolOutput,
-        pendingToolTasks,
-        resetSessionAfterRoleOrderingConflict: async (reason) => {
-          const session = turn.session;
-          if (session.kind !== "session") {
-            return false;
-          }
-          return await resetReplyRunSession({
-            options: {
-              failureLabel: "role ordering conflict",
-              buildLogMessage: (nextSessionId) =>
-                `Role ordering conflict (${reason}). Restarting session ${session.key} -> ${nextSessionId}.`,
-              cleanupTranscripts: true,
-            },
-            sessionKey: session.key,
-            queueKey: session.key,
-            activeSessionEntry: session.current(),
-            activeSessionStore: turn.sessionStore,
-            storePath: session.storePath,
-            messageThreadId:
-              sessionCtx.MessageThreadId != null ? String(sessionCtx.MessageThreadId) : undefined,
-            followupRun: turn.queued,
-            onActiveSessionEntry: (entry) => {
-              session.adopt(entry);
-              turn.operation.updateSessionId(entry.sessionId);
-            },
-            onNewSession: () => undefined,
-          });
-        },
-        isHeartbeat: sourceOpts?.isHeartbeat === true,
-        sessionKey: turn.session.kind === "session" ? turn.session.key : undefined,
-        runtimePolicySessionKey: turn.queued.run.runtimePolicySessionKey,
-        getActiveSessionEntry: turn.session.current,
-        activeSessionStore: turn.sessionStore,
-        storePath: turn.session.kind === "session" ? turn.session.storePath : undefined,
-        resolvedVerboseLevel: currentVerboseLevel() ?? "off",
-        toolProgressDetail: defaults.toolProgressDetail,
-        onCompactionNoticePayload: (payload) =>
-          enqueueProgress(() =>
-            progressAllowed()
-              ? params.onCompactionNoticePayload(payload, { runId: turn.runId })
-              : undefined,
-          ),
-      });
-    } catch (error) {
-      while (
-        pendingProgressTasks.size > 0 ||
-        pendingToolTasks.size > 0 ||
-        pendingToolTaskWatchers.size > 0
-      ) {
-        await Promise.allSettled([
-          ...pendingProgressTasks,
-          ...pendingToolTasks,
-          ...pendingToolTaskWatchers,
-        ]);
+    const routeClassification: ReadinessRouteClassification = "REAL_MODEL_EXECUTION_ROUTE";
+    const envelopeResult = loadCanonicalReadinessEnvelope();
+    let evidenceJson: string | null = null;
+    let projectionId: string | null = null;
+    let projectionVersion: string | null = null;
+    if (envelopeResult.ok) {
+      evidenceJson = envelopeResult.evidenceJson;
+      const loader = createReadinessProjectionLoader({ evidenceJson });
+      const projectionResult = await loader({});
+      if (projectionResult.ok) {
+        projectionId = projectionResult.projection.id;
+        projectionVersion = projectionResult.projection.version;
       }
-      throw error;
+    }
+    const preparationResult = prepareReadinessForRun({
+      routeClassification,
+      evidenceJson,
+      projectionId,
+      projectionVersion,
+      now: Date.now(),
+    });
+    if (!preparationResult.ok) {
+      execution = {
+        runId: turn.runId,
+        outcome: {
+          kind: "blocked",
+          blockedResult: {
+            classification: preparationResult.code,
+            diagnosticRef: "readiness-preparation-failure",
+            evaluatedAt: Date.now(),
+            sanitizedMessage: "Readiness preparation could not be completed.",
+            isBlocked: true,
+          },
+          resolved: {
+            provider: turn.queued.run.provider,
+            model: turn.queued.run.model,
+          },
+        },
+      };
+    } else {
+      turn.queued.run.readinessGovernance = preparationResult.governance;
+      try {
+        execution = await executeAgentTurn({
+          commandBody: turn.queued.prompt,
+          transcriptCommandBody: turn.queued.transcriptPrompt,
+          followupRun: turn.queued,
+          sessionCtx,
+          replyOperation: turn.operation,
+          opts: progressOpts,
+          typingSignals,
+          blockReplyPipeline: null,
+          blockStreamingEnabled: false,
+          resolvedBlockStreamingBreak: turn.queued.run.blockReplyBreak,
+          applyReplyToMode: (payload) => payload,
+          shouldEmitToolResult,
+          shouldEmitToolOutput,
+          pendingToolTasks,
+          resetSessionAfterRoleOrderingConflict: async (reason) => {
+            const session = turn.session;
+            if (session.kind !== "session") {
+              return false;
+            }
+            return await resetReplyRunSession({
+              options: {
+                failureLabel: "role ordering conflict",
+                buildLogMessage: (nextSessionId) =>
+                  `Role ordering conflict (${reason}). Restarting session ${session.key} -> ${nextSessionId}.`,
+                cleanupTranscripts: true,
+              },
+              sessionKey: session.key,
+              queueKey: session.key,
+              activeSessionEntry: session.current(),
+              activeSessionStore: turn.sessionStore,
+              storePath: session.storePath,
+              messageThreadId:
+                sessionCtx.MessageThreadId != null ? String(sessionCtx.MessageThreadId) : undefined,
+              followupRun: turn.queued,
+              onActiveSessionEntry: (entry) => {
+                session.adopt(entry);
+                turn.operation.updateSessionId(entry.sessionId);
+              },
+              onNewSession: () => undefined,
+            });
+          },
+          isHeartbeat: sourceOpts?.isHeartbeat === true,
+          sessionKey: turn.session.kind === "session" ? turn.session.key : undefined,
+          runtimePolicySessionKey: turn.queued.run.runtimePolicySessionKey,
+          getActiveSessionEntry: turn.session.current,
+          activeSessionStore: turn.sessionStore,
+          storePath: turn.session.kind === "session" ? turn.session.storePath : undefined,
+          resolvedVerboseLevel: currentVerboseLevel() ?? "off",
+          toolProgressDetail: defaults.toolProgressDetail,
+          onCompactionNoticePayload: (payload) =>
+            enqueueProgress(() =>
+              progressAllowed()
+                ? params.onCompactionNoticePayload(payload, { runId: turn.runId })
+                : undefined,
+            ),
+        });
+      } catch (error) {
+        while (
+          pendingProgressTasks.size > 0 ||
+          pendingToolTasks.size > 0 ||
+          pendingToolTaskWatchers.size > 0
+        ) {
+          await Promise.allSettled([
+            ...pendingProgressTasks,
+            ...pendingToolTasks,
+            ...pendingToolTaskWatchers,
+          ]);
+        }
+        throw error;
+      }
     }
   }
   return {

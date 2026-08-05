@@ -198,6 +198,8 @@ export type FollowupRun = {
     allowEmptyAssistantReplyAsSilent?: boolean;
     suppressNextUserMessagePersistence?: boolean;
     suppressTranscriptOnlyAssistantPersistence?: boolean;
+    /** Readiness governance carrier for the primary pre-model gate. */
+    readinessGovernance?: import("../../../agents/readiness/types.js").ReadinessGovernance;
   };
 };
 

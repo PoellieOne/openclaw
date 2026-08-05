@@ -1,14 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { ReadinessCode } from "./codes.js";
 import { ReadinessRunState } from "./state.js";
-import type { ResolvedReadinessPolicy, ReadinessEvaluation } from "./types.js";
+import type {
+  ResolvedReadinessPolicy,
+  ReadinessEvaluation,
+  ReadinessAuthorityLevel,
+} from "./types.js";
 
 const NOW = 2000000000000;
 
 function makePolicy(disposition: ResolvedReadinessPolicy["disposition"]): ResolvedReadinessPolicy {
   return {
     disposition,
-    source: { sourceId: "test", authorityLevel: 10 as unknown as number },
+    source: { sourceId: "test", authorityLevel: 10 as ReadinessAuthorityLevel },
     environmentAttestation: "PRODUCTION",
     projectionBindingRequired: false,
     resolvedAt: NOW,

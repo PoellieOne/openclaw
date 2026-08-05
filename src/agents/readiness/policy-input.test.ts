@@ -15,8 +15,8 @@ describe("resolveReadinessPolicyInput", () => {
       now: NOW,
     });
     expect(result.candidates).toHaveLength(1);
-    expect(result.candidates[0].mode).toBe("required");
-    expect(result.candidates[0].authorityLevel).toBe(READINESS_AUTHORITY_HIGHEST);
+    expect(result.candidates[0]!.mode).toBe("required");
+    expect(result.candidates[0]!.authorityLevel).toBe(READINESS_AUTHORITY_HIGHEST);
     expect(result.environmentAttestation).toBe("PRODUCTION");
   });
 
@@ -26,8 +26,8 @@ describe("resolveReadinessPolicyInput", () => {
       now: NOW,
     });
     expect(result.candidates).toHaveLength(1);
-    expect(result.candidates[0].mode).toBe("required");
-    expect(result.candidates[0].authorityLevel).toBe(READINESS_AUTHORITY_TEST_HARNESS);
+    expect(result.candidates[0]!.mode).toBe("required");
+    expect(result.candidates[0]!.authorityLevel).toBe(READINESS_AUTHORITY_TEST_HARNESS);
     expect(result.environmentAttestation).toBe("TEST_HARNESS");
   });
 
@@ -38,7 +38,7 @@ describe("resolveReadinessPolicyInput", () => {
       now: NOW,
     });
     expect(result.environmentAttestation).toBe("TEST_HARNESS");
-    expect(result.candidates[0].authorityLevel).toBe(READINESS_AUTHORITY_TEST_HARNESS);
+    expect(result.candidates[0]!.authorityLevel).toBe(READINESS_AUTHORITY_TEST_HARNESS);
   });
 
   it("trusted non-model route returns NOT_APPLICABLE semantics", () => {
@@ -47,8 +47,8 @@ describe("resolveReadinessPolicyInput", () => {
       now: NOW,
     });
     expect(result.candidates).toHaveLength(1);
-    expect(result.candidates[0].applicability).toBe("non-model");
-    expect(result.candidates[0].authorityLevel).toBe(READINESS_AUTHORITY_ROUTE_CLASSIFICATION);
+    expect(result.candidates[0]!.applicability).toBe("non-model");
+    expect(result.candidates[0]!.authorityLevel).toBe(READINESS_AUTHORITY_ROUTE_CLASSIFICATION);
   });
 
   it("unknown route returns empty candidates (UNRESOLVED)", () => {
@@ -89,7 +89,7 @@ describe("resolveReadinessPolicyInput", () => {
       routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
       now: NOW,
     });
-    expect(result.candidates[0].disablePermittedByGoverningPolicy).toBe(false);
+    expect(result.candidates[0]!.disablePermittedByGoverningPolicy).toBe(false);
   });
 
   it("ordinary low-authority input cannot weaken REQUIRED", () => {
@@ -97,7 +97,7 @@ describe("resolveReadinessPolicyInput", () => {
       routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
       now: NOW,
     });
-    expect(result.candidates[0].mode).toBe("required");
-    expect(result.candidates[0].authorityLevel).toBe(READINESS_AUTHORITY_HIGHEST);
+    expect(result.candidates[0]!.mode).toBe("required");
+    expect(result.candidates[0]!.authorityLevel).toBe(READINESS_AUTHORITY_HIGHEST);
   });
 });

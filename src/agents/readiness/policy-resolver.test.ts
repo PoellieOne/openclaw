@@ -7,7 +7,12 @@ import {
   READINESS_AUTHORITY_HIGHEST,
   READINESS_AUTHORITY_ROUTE_CLASSIFICATION,
 } from "./types.js";
-import type { ReadinessPolicyCandidate, ReadinessPolicyResolutionInput } from "./types.js";
+import type {
+  ReadinessPolicyCandidate,
+  ReadinessPolicyResolutionInput,
+  EnvironmentAttestation,
+  ReadinessAuthorityLevel,
+} from "./types.js";
 
 const NOW = 2000000000000;
 
@@ -26,7 +31,7 @@ function makeCandidate(
 
 function resolve(
   candidates: ReadinessPolicyCandidate[],
-  env = "PRODUCTION" as const,
+  env: EnvironmentAttestation = "PRODUCTION",
 ): ReturnType<typeof resolveReadinessPolicy> {
   const input: ReadinessPolicyResolutionInput = {
     candidates,
@@ -256,7 +261,7 @@ describe("resolveReadinessPolicy", () => {
       makeCandidate({
         sourceId: "unknown",
         mode: "required",
-        authorityLevel: 999 as unknown as number,
+        authorityLevel: 999 as ReadinessAuthorityLevel,
       }),
     ]);
     expect(result.disposition).toBe("REQUIRED");

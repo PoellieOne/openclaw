@@ -164,7 +164,7 @@ describe("loadCanonicalReadinessEnvelope", () => {
       if (result.ok) {
         expect(result.envelope.evidence.decision).toBe("READY");
         expect(result.projection).toBeDefined();
-        expect(result.projection.content).toBe("Test projection content");
+        expect(result.projection!.content).toBe("Test projection content");
       }
     });
 

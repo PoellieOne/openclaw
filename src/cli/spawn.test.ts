@@ -21,9 +21,9 @@ function createSpawnProgram(): Command {
   return program;
 }
 
-function parseSpawn(args: string[]): Promise<void> {
+async function parseSpawn(args: string[]): Promise<void> {
   const program = createSpawnProgram();
-  return program.parseAsync(["spawn", ...args], { from: "user" });
+  await program.parseAsync(["spawn", ...args], { from: "user" });
 }
 
 function acceptedResult() {
