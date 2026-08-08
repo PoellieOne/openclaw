@@ -97,6 +97,8 @@ export type EmbeddedRunAttemptTrajectoryRecorder = {
 export type EmbeddedRunAttemptParams = EmbeddedRunAttemptBase & {
   /** Sticky operation identity used to suppress ordinary retry and hook policy. */
   operation?: EmbeddedRunAttemptOperation;
+  /** Run-local readiness projection holder shared by reference through the run carrier chain. */
+  runLocalProjectionState?: import("../../readiness/bootstrap-adapter-wiring.js").RunLocalProjectionState;
   preparedModelRuntime?: PreparedModelRuntimeSnapshot;
   /** Active file-backed artifact target resolved by the run/session target seam. */
   sessionFile: string;

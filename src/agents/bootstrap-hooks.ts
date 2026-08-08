@@ -15,6 +15,8 @@ export async function applyBootstrapHookOverrides(params: {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  /** Run-local readiness projection holder attached to the hook context. */
+  runLocalProjectionState?: import("./readiness/bootstrap-adapter-wiring.js").RunLocalProjectionState;
 }): Promise<WorkspaceBootstrapFile[]> {
   const sessionKey = params.sessionKey ?? params.sessionId ?? "unknown";
   const agentId =
@@ -27,6 +29,9 @@ export async function applyBootstrapHookOverrides(params: {
     sessionKey: params.sessionKey,
     sessionId: params.sessionId,
     agentId,
+    ...(params.runLocalProjectionState
+      ? { runLocalProjectionState: params.runLocalProjectionState }
+      : {}),
   };
   const event = createInternalHookEvent("agent", "bootstrap", sessionKey, context);
   await triggerInternalHook(event);

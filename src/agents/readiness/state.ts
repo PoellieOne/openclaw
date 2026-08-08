@@ -1,4 +1,7 @@
 import { ReadinessCode } from "./codes.js";
+import { CONTRACT_VERSION_V2 } from "./contracts-v2.js";
+import type { ProjectionPreparationAssertion } from "./contracts-v2.js";
+import type { RevalidationMechanism } from "./revalidation.js";
 import type {
   ReadinessRunStateData,
   ResolvedReadinessPolicy,
@@ -38,6 +41,9 @@ export class ReadinessRunState {
     evaluation: ReadinessEvaluation | null;
     projectionId?: string;
     projectionVersion?: string;
+    projectionPreparation?: ProjectionPreparationAssertion;
+    expectedConfigDigest?: string;
+    revalidationMechanism?: RevalidationMechanism;
     now: number;
   }): ReadinessRunState {
     const evaluation = params.evaluation;
@@ -49,6 +55,9 @@ export class ReadinessRunState {
       evaluation,
       projectionId: params.projectionId ?? null,
       projectionVersion: params.projectionVersion ?? null,
+      projectionPreparation: params.projectionPreparation ?? null,
+      expectedConfigDigest: params.expectedConfigDigest ?? null,
+      revalidationMechanism: params.revalidationMechanism ?? null,
       evaluatedAt: evaluation?.evaluatedAt ?? params.now,
       classification: evaluation?.classification ?? ReadinessCode.POLICY_UNRESOLVED,
       diagnosticRef: evaluation?.diagnosticRef ?? "readiness-no-evaluation",
@@ -75,12 +84,29 @@ export class ReadinessRunState {
     return this.data.evaluatedAt;
   }
 
+  get projectionPreparation(): ProjectionPreparationAssertion | null {
+    return this.data.projectionPreparation;
+  }
+
+  get expectedConfigDigest(): string | null {
+    return this.data.expectedConfigDigest;
+  }
+
+  get revalidationMechanism(): RevalidationMechanism | null {
+    return this.data.revalidationMechanism;
+  }
+
   mayExecute(): boolean {
     if (this.data.policy.disposition === "NOT_APPLICABLE") return true;
     if (this.data.policy.disposition === "EXPLICITLY_DISABLED_NON_PRODUCTION") return true;
     if (this.data.evaluation === null) return false;
-    if (this.data.policy.disposition === "REQUIRED" && this.data.evaluation.decision === "READY")
+    if (this.data.policy.disposition === "REQUIRED" && this.data.evaluation.decision === "READY") {
+      if (this.data.policy.contractVersion === CONTRACT_VERSION_V2) {
+        if (this.data.projectionPreparation === null) return false;
+        if (!this.data.projectionPreparation.ok) return false;
+      }
       return true;
+    }
     return false;
   }
 

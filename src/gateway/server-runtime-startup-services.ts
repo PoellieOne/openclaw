@@ -1,3 +1,4 @@
+import { registerGeneratedProjectionBootstrapHook } from "../agents/readiness/bootstrap-adapter-wiring.js";
 // Gateway startup-time runtime services.
 // Starts mode-dependent background monitors with inert handles for disabled paths.
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -50,6 +51,11 @@ export function startGatewayRuntimeServices(params: {
     cfg: params.cfgAtStart,
     channelManager: params.channelManager,
   });
+
+  // Process-lifetime readiness bootstrap hook registration. The module-level
+  // duplicate guard makes this exactly-once per process, before any governed
+  // auto-reply agent bootstrap attempt can run.
+  registerGeneratedProjectionBootstrapHook();
 
   return {
     heartbeatRunner: createNoopHeartbeatRunner(),

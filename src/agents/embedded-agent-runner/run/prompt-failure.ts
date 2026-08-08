@@ -22,6 +22,7 @@ import {
 import { log } from "../logger.js";
 import type { EmbeddedAgentMeta, EmbeddedAgentRunResult, TraceAttempt } from "../types.js";
 import { isShortWindowRateLimitMessage } from "./assistant-failover.js";
+import { ReadinessGateBlockedError } from "./attempt-prompt-submit.js";
 import { buildEmbeddedRunBlockedResult } from "./blocked-run-result.js";
 import { createFailoverDecisionLogger } from "./failover-observation.js";
 import { mergeRetryFailoverReason, resolveRunFailoverDecision } from "./failover-policy.js";
@@ -117,6 +118,32 @@ export async function handleEmbeddedPromptFailure(input: {
       thinkLevel: input.thinkLevel,
       authRetryPending: true,
       lastRetryFailoverReason: input.previousRetryFailoverReason,
+    };
+  }
+
+  // Gate-2 readiness blocks are terminal governed decisions: no provider
+  // retry, no auth rotation, no fallback, no model switch through the barrier.
+  if (input.promptError instanceof ReadinessGateBlockedError) {
+    const gateError = input.promptError;
+    input.traceAttempts.push({
+      provider: input.provider,
+      model: input.modelId,
+      result: "surface_error",
+      reason: "readiness",
+      stage: "prompt",
+    });
+    return {
+      action: "complete",
+      result: buildEmbeddedRunBlockedResult({
+        text: gateError.message,
+        errorKind: "readiness_blocked",
+        errorMessage: gateError.message,
+        durationMs: Date.now() - input.startedAtMs,
+        agentMeta: input.buildErrorAgentMeta(),
+        attempt: input.attempt,
+        replayInvalid: false,
+        finalPromptText: input.attempt.finalPromptText,
+      }),
     };
   }
 

@@ -207,6 +207,11 @@ export function classifyEmbeddedAgentRunResultForModelFallback(params: {
     // bypass a policy decision rather than recover a malformed model result.
     return null;
   }
+  if (params.result.meta.error?.kind === "readiness_blocked") {
+    // Readiness Gate-2/backend-policy blocks are terminal governed decisions;
+    // provider fallback and model switch must not bypass them.
+    return null;
+  }
   const payloads = params.result.payloads ?? [];
   const genericExternalFailureClassification = classifyGenericExternalRunFailurePayload({
     provider: params.provider,

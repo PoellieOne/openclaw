@@ -200,6 +200,8 @@ export type FollowupRun = {
     suppressTranscriptOnlyAssistantPersistence?: boolean;
     /** Readiness governance carrier for the primary pre-model gate. */
     readinessGovernance?: import("../../../agents/readiness/types.js").ReadinessGovernance;
+    /** Run-local readiness projection holder shared by reference through the run carrier chain. */
+    runLocalProjectionState?: import("../../../agents/readiness/bootstrap-adapter-wiring.js").RunLocalProjectionState;
   };
 };
 

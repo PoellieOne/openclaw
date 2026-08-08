@@ -21,6 +21,7 @@ import {
   resolveBootstrapPromptTruncationWarningMode,
   resolveBootstrapTotalMaxChars,
 } from "../../embedded-agent-helpers.js";
+import { verifyFinalContextProjection } from "../../readiness/bootstrap-adapter-wiring.js";
 import {
   DEFAULT_BOOTSTRAP_FILENAME,
   isWorkspaceBootstrapPending,
@@ -30,6 +31,15 @@ import { log } from "../logger.js";
 import { remapInjectedContextFilesToWorkspace } from "./attempt.bootstrap-context.js";
 import { resolveAttemptBootstrapContext } from "./attempt.context-engine-helpers.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
+
+/** Stage-B final-context verification result carried on the attempt holder. */
+export type StageBVerification = {
+  ok: boolean;
+  code: string | null;
+  entryCount: number;
+  entryDigest: string | null;
+  expectedDigest: string | null;
+};
 
 export async function prepareEmbeddedAttemptBootstrap(params: {
   attempt: EmbeddedRunAttemptParams;
@@ -122,6 +132,7 @@ export async function prepareEmbeddedAttemptBootstrap(params: {
           warn: bootstrapWarn,
           contextMode: attempt.bootstrapContextMode,
           runKind: attempt.bootstrapContextRunKind,
+          runLocalProjectionState: attempt.runLocalProjectionState,
         }));
       return {
         bootstrapFiles,
@@ -134,6 +145,10 @@ export async function prepareEmbeddedAttemptBootstrap(params: {
     },
   });
   params.markStage("bootstrap-context");
+  const stageB = resolveStageBForAttempt({
+    runLocalProjectionState: attempt.runLocalProjectionState,
+    hookAdjustedBootstrapFiles,
+  });
   const remappedContextFiles = remapInjectedContextFilesToWorkspace({
     files: resolvedContextFiles,
     sourceWorkspaceDir: params.resolvedWorkspace,
@@ -190,5 +205,63 @@ export async function prepareEmbeddedAttemptBootstrap(params: {
     hookAdjustedBootstrapFiles,
     shouldRecordCompletedBootstrapTurn,
     workspaceNotes,
+    stageB,
+  };
+}
+
+/** Per-attempt final-context verification after the hook/adapter finalizes bootstrap files. */
+export function resolveStageBForAttempt(params: {
+  runLocalProjectionState: EmbeddedRunAttemptParams["runLocalProjectionState"];
+  hookAdjustedBootstrapFiles: readonly WorkspaceBootstrapFile[];
+}): StageBVerification {
+  const runLocal = params.runLocalProjectionState;
+  if (!runLocal) {
+    return {
+      ok: false,
+      code: "PROJECTION_INJECTION_MISSING",
+      entryCount: 0,
+      entryDigest: null,
+      expectedDigest: null,
+    };
+  }
+  if (!runLocal.governance.governed) {
+    return {
+      ok: false,
+      code: "PROJECTION_INJECTION_MISSING",
+      entryCount: 0,
+      entryDigest: null,
+      expectedDigest: runLocal.preparation.expectedProjectionDigest,
+    };
+  }
+  if (!runLocal.governance.state.mayExecute()) {
+    return {
+      ok: false,
+      code: runLocal.governance.state.classification,
+      entryCount: 0,
+      entryDigest: null,
+      expectedDigest: runLocal.preparation.expectedProjectionDigest,
+    };
+  }
+  const injection = runLocal.injection;
+  if (injection.ok) {
+    return {
+      ok: true,
+      code: null,
+      entryCount: injection.entryCount,
+      entryDigest: injection.entryDigest,
+      expectedDigest: runLocal.preparation.expectedProjectionDigest,
+    };
+  }
+  const finalVerification = verifyFinalContextProjection(
+    params.hookAdjustedBootstrapFiles,
+    runLocal.preparation.expectedProjectionDigest,
+  );
+  runLocal.injection = finalVerification;
+  return {
+    ok: finalVerification.ok,
+    code: finalVerification.code,
+    entryCount: finalVerification.entryCount,
+    entryDigest: finalVerification.entryDigest,
+    expectedDigest: runLocal.preparation.expectedProjectionDigest,
   };
 }

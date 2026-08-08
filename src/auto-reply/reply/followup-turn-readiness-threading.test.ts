@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CanonicalReadinessEnvelopeLoadResult } from "../../agents/readiness/envelope-parser.js";
+import type { V2CanonicalReadinessEnvelopeLoadResult } from "../../agents/readiness/envelope-parser.js";
 import type { ReadinessGovernance } from "../../agents/readiness/types.js";
 import type { AgentTurnParams } from "./agent-runner-execution.types.js";
 import type { AdmittedFollowupTurn } from "./followup-turn-admission.js";
@@ -8,8 +8,7 @@ const state = vi.hoisted(() => ({
   execute: vi.fn(),
   loadEntryReadOnly: vi.fn(),
   reset: vi.fn(),
-  loadCanonicalReadinessEnvelope: vi.fn(),
-  createReadinessProjectionLoader: vi.fn(),
+  loadCanonicalReadinessEnvelopeV2: vi.fn(),
   prepareReadinessForRun: vi.fn(),
 }));
 
@@ -26,13 +25,8 @@ vi.mock("../../config/sessions/session-accessor.js", () => ({
 }));
 
 vi.mock("../../agents/readiness/canonical-envelope-reader.js", () => ({
-  loadCanonicalReadinessEnvelope: (...args: unknown[]) =>
-    state.loadCanonicalReadinessEnvelope(...args),
-}));
-
-vi.mock("../../agents/readiness/projection-loader.js", () => ({
-  createReadinessProjectionLoader: (...args: unknown[]) =>
-    state.createReadinessProjectionLoader(...args),
+  loadCanonicalReadinessEnvelopeV2: (...args: unknown[]) =>
+    state.loadCanonicalReadinessEnvelopeV2(...args),
 }));
 
 vi.mock("../../agents/readiness/run-preparation.js", () => ({
@@ -99,38 +93,64 @@ function createTurn(overrides: Partial<AdmittedFollowupTurn> = {}): AdmittedFoll
   };
 }
 
-function makeReadyEnvelope(): CanonicalReadinessEnvelopeLoadResult {
+function makeReadyEnvelope(): V2CanonicalReadinessEnvelopeLoadResult {
   return {
     ok: true,
     envelope: {
-      envelopeVersion: "readiness-envelope.v1",
+      envelopeVersion: "readiness-envelope.v2",
       publishedAt: "2026-08-04T12:00:00.000Z",
       publishedBy: "test",
       evidence: {
-        contract_version: "readiness.v1",
+        contract_version: "readiness.v2",
         decision: "READY",
         valid_until: "2026-08-05T12:00:00.000Z",
         evaluated_at: "2026-08-04T12:00:00.000Z",
-        projection_id: "proj-v1",
-        projection_version: "1.0.0",
       },
       projection: { id: "proj-v1", version: "1.0.0", content: "test content" },
       binding: { kind: "sha256", projectionSha256: "a".repeat(64) },
+      semanticProjection: { id: "sem-v1", version: "1.0.0", sourceDigest: "b".repeat(64) },
+      generatedPayload: {
+        payloadId: "payload-v1",
+        payloadVersion: "1.0.0",
+        payloadSha256: "c".repeat(64),
+        payloadBytecount: 1024,
+        payloadFilename: "payload.json",
+      },
+      sourceManifest: {
+        manifestId: "canonical-source-manifest.v1",
+        manifestDigest: "d".repeat(64),
+      },
+      agentBinding: { agentId: "agent" },
+      runtimeBinding: { imageId: "img", sourceCommit: "commit", sourceTree: "tree" },
+      configBinding: { configDigest: "e".repeat(64) },
+      policyBinding: {
+        providerPolicy: "openai",
+        modelPolicy: "openai/gpt-5.6-sol",
+        preferredAuthMethod: "OPENAI_CHATGPT_CODEX_OAUTH",
+        fallbackPolicy: "PROHIBITED",
+      },
+      credentialRoute: {
+        authMethodPolicy: "OPENAI_CHATGPT_CODEX_OAUTH",
+        credentialRouteStatus: "AVAILABLE_VERIFIED",
+      },
+      validator: { validatorId: "readiness-validator-v2", validatorVersion: "1.0.0" },
+      revalidation: { revalidationRequired: false, reason: null, validatorVersion: "1.0.0" },
+      provenance: { generatorId: "test-generator", generatorVersion: "1.0.0" },
     },
     evidenceJson: JSON.stringify({ decision: "READY" }),
     projection: { id: "proj-v1", version: "1.0.0", content: "test content" },
   };
 }
 
-function makeBlockedEnvelope(): CanonicalReadinessEnvelopeLoadResult {
+function makeBlockedEnvelope(): V2CanonicalReadinessEnvelopeLoadResult {
   return {
     ok: true,
     envelope: {
-      envelopeVersion: "readiness-envelope.v1",
+      envelopeVersion: "readiness-envelope.v2",
       publishedAt: "2026-08-04T12:00:00.000Z",
       publishedBy: "test",
       evidence: {
-        contract_version: "readiness.v1",
+        contract_version: "readiness.v2",
         decision: "BLOCKED",
       },
     },
@@ -185,11 +205,7 @@ beforeEach(() => {
     runId: "run-1",
     outcome: { kind: "rejected", payload: { text: "done" } },
   });
-  state.loadCanonicalReadinessEnvelope.mockReturnValue(makeReadyEnvelope());
-  state.createReadinessProjectionLoader.mockReturnValue(async () => ({
-    ok: true,
-    projection: { id: "proj-v1", version: "1.0.0", content: "test content" },
-  }));
+  state.loadCanonicalReadinessEnvelopeV2.mockReturnValue(makeReadyEnvelope());
   state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedReady() });
 });
 
@@ -206,7 +222,7 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
       onCompactionNoticePayload: vi.fn(async () => {}),
     });
 
-    expect(state.loadCanonicalReadinessEnvelope).toHaveBeenCalledTimes(1);
+    expect(state.loadCanonicalReadinessEnvelopeV2).toHaveBeenCalledTimes(1);
   });
 
   it("real model READY prepares governance once", async () => {
@@ -245,7 +261,7 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
   it("canonical BLOCKED produces governed BLOCKED", async () => {
     const turn = createTurn();
     const typing = createTypingController();
-    state.loadCanonicalReadinessEnvelope.mockReturnValue(makeBlockedEnvelope());
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue(makeBlockedEnvelope());
     state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedBlocked() });
 
     await executeFollowupTurn({
@@ -266,7 +282,7 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
   it("missing canonical evidence produces governed BLOCKED", async () => {
     const turn = createTurn();
     const typing = createTypingController();
-    state.loadCanonicalReadinessEnvelope.mockReturnValue({
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
       ok: false,
       code: "EVIDENCE_MISSING",
       message: "not found",
@@ -291,7 +307,7 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
   it("malformed evidence produces governed BLOCKED", async () => {
     const turn = createTurn();
     const typing = createTypingController();
-    state.loadCanonicalReadinessEnvelope.mockReturnValue({
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
       ok: false,
       code: "EVIDENCE_MALFORMED",
       message: "invalid",
@@ -316,7 +332,7 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
   it("expired evidence produces governed BLOCKED", async () => {
     const turn = createTurn();
     const typing = createTypingController();
-    state.loadCanonicalReadinessEnvelope.mockReturnValue(makeReadyEnvelope());
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue(makeReadyEnvelope());
     state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedBlocked() });
 
     await executeFollowupTurn({
@@ -337,12 +353,7 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
   it("projection mismatch produces governed BLOCKED", async () => {
     const turn = createTurn();
     const typing = createTypingController();
-    state.loadCanonicalReadinessEnvelope.mockReturnValue(makeReadyEnvelope());
-    state.createReadinessProjectionLoader.mockReturnValue(async () => ({
-      ok: false,
-      code: "PROJECTION_BINDING_MISMATCH",
-      message: "mismatch",
-    }));
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue(makeReadyEnvelope());
     state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedBlocked() });
 
     await executeFollowupTurn({
@@ -363,7 +374,7 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
   it("unresolved model-route policy produces governed BLOCKED", async () => {
     const turn = createTurn();
     const typing = createTypingController();
-    state.loadCanonicalReadinessEnvelope.mockReturnValue({
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
       ok: false,
       code: "POLICY_UNRESOLVED",
       message: "unresolved",
@@ -388,7 +399,7 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
   it("reader or preparation exception is sanitized and BLOCKED", async () => {
     const turn = createTurn();
     const typing = createTypingController();
-    state.loadCanonicalReadinessEnvelope.mockReturnValue({
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
       ok: false,
       code: "INTERNAL_EVALUATION_FAILURE_SANITIZED",
       message: "internal error",
@@ -474,10 +485,10 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
       onCompactionNoticePayload: vi.fn(async () => {}),
     });
 
-    expect(state.loadCanonicalReadinessEnvelope).toHaveBeenCalledTimes(1);
+    expect(state.loadCanonicalReadinessEnvelopeV2).toHaveBeenCalledTimes(1);
   });
 
-  it("projection-loader creation count is exactly 1", async () => {
+  it("V2 envelope read count is exactly 1", async () => {
     const turn = createTurn();
     const typing = createTypingController();
 
@@ -489,7 +500,7 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
       onCompactionNoticePayload: vi.fn(async () => {}),
     });
 
-    expect(state.createReadinessProjectionLoader).toHaveBeenCalledTimes(1);
+    expect(state.loadCanonicalReadinessEnvelopeV2).toHaveBeenCalledTimes(1);
   });
 
   it("readiness-preparation count is exactly 1", async () => {

@@ -1,4 +1,5 @@
 import { ReadinessCode } from "./codes.js";
+import { CONTRACT_VERSION_V2 } from "./contracts-v2.js";
 import type { GovernedReadinessProjection, ProjectionLoadResult } from "./types.js";
 
 const MAX_PROJECTION_CONTENT_BYTES = 65536;
@@ -19,6 +20,13 @@ export function createReadinessProjectionLoader(params: {
         };
       }
       const record = parsed as Record<string, unknown>;
+      if (record.contract_version === CONTRACT_VERSION_V2) {
+        return {
+          ok: false,
+          code: ReadinessCode.UNSUPPORTED_CONTRACT_VERSION,
+          message: "readiness.v2 production route must not use the in-memory evidence projection",
+        };
+      }
       const projectionId = typeof record.projection_id === "string" ? record.projection_id : "";
       const projectionVersion =
         typeof record.projection_version === "string" ? record.projection_version : "";

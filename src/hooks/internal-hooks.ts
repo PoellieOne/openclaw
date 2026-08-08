@@ -28,6 +28,8 @@ export type AgentBootstrapHookContext = {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  /** Run-local readiness projection holder attached by the governed production route. */
+  runLocalProjectionState?: import("../agents/readiness/bootstrap-adapter-wiring.js").RunLocalProjectionState;
 };
 
 export type AgentBootstrapHookEvent = InternalHookEvent & {

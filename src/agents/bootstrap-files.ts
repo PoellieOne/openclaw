@@ -253,6 +253,8 @@ export async function resolveBootstrapFilesForRun(params: {
   warn?: (message: string) => void;
   contextMode?: BootstrapContextMode;
   runKind?: BootstrapContextRunKind;
+  /** Run-local readiness projection holder shared by reference through the run carrier chain. */
+  runLocalProjectionState?: import("./readiness/bootstrap-adapter-wiring.js").RunLocalProjectionState;
 }): Promise<WorkspaceBootstrapFile[]> {
   const sessionKey = params.sessionKey ?? params.sessionId;
   const workspaceSetupCompleted = await isWorkspaceSetupCompletedForContext(params.workspaceDir);
@@ -279,6 +281,7 @@ export async function resolveBootstrapFilesForRun(params: {
     sessionKey: params.sessionKey,
     sessionId: params.sessionId,
     agentId: params.agentId,
+    runLocalProjectionState: params.runLocalProjectionState,
   });
   const filteredUpdated = filterCompletedWorkspaceBootstrapFile(
     updated,

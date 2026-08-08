@@ -90,6 +90,9 @@ export type ReadinessRunStateData = {
   evaluation: ReadinessEvaluation | null;
   projectionId: string | null;
   projectionVersion: string | null;
+  projectionPreparation: import("./contracts-v2.js").ProjectionPreparationAssertion | null;
+  expectedConfigDigest: string | null;
+  revalidationMechanism: import("./revalidation.js").RevalidationMechanism | null;
   evaluatedAt: number;
   classification: string;
   diagnosticRef: string;

@@ -1,5 +1,14 @@
-import { loadCanonicalReadinessEnvelope } from "../../agents/readiness/canonical-envelope-reader.js";
-import { createReadinessProjectionLoader } from "../../agents/readiness/projection-loader.js";
+import { loadCanonicalReadinessEnvelopeV2 } from "../../agents/readiness/canonical-envelope-reader.js";
+import {
+  SUPPORTED_VALIDATOR_ID,
+  SUPPORTED_VALIDATOR_VERSION,
+} from "../../agents/readiness/contracts-v2.js";
+import {
+  assembleGovernedRunLocalHolder,
+  buildGovernedReadinessConfigSource,
+  buildGovernedV2PreparationInput,
+  computeGovernedExpectedConfigDigest,
+} from "../../agents/readiness/production-v2-preparation.js";
 import { prepareReadinessForRun } from "../../agents/readiness/run-preparation.js";
 import type { ReadinessRouteClassification } from "../../agents/readiness/types.js";
 import { loadSessionEntryReadOnly } from "../../config/sessions/session-accessor.js";
@@ -273,17 +282,47 @@ export async function executeFollowupTurn(params: {
     };
   } else {
     const routeClassification: ReadinessRouteClassification = "REAL_MODEL_EXECUTION_ROUTE";
-    const envelopeResult = loadCanonicalReadinessEnvelope();
+    const envelopeResult = loadCanonicalReadinessEnvelopeV2();
+    let v2PreparationInput: Parameters<typeof prepareReadinessForRun>[0]["v2"] | undefined;
+    let effectiveExecutionBackend: Parameters<
+      typeof prepareReadinessForRun
+    >[0]["effectiveExecutionBackend"];
+    if (envelopeResult.ok && envelopeResult.projection) {
+      const envelope = envelopeResult.envelope;
+      const sessionEntry = turn.session.kind === "session" ? turn.session.current() : undefined;
+      const configSource = buildGovernedReadinessConfigSource({
+        cfg: turn.queued.run.config,
+        agentId: turn.queued.run.agentId,
+        sessionKey: turn.queued.run.sessionKey,
+        provider: turn.queued.run.provider,
+        model: turn.queued.run.model,
+        workspaceDir: turn.queued.run.workspaceDir,
+        agentDir: turn.queued.run.agentDir,
+        sessionEntry,
+        authProfileId: turn.queued.run.authProfileId,
+      });
+      effectiveExecutionBackend = configSource.effectiveExecutionBackend;
+      const expectedConfigDigest = computeGovernedExpectedConfigDigest(configSource);
+      v2PreparationInput = buildGovernedV2PreparationInput({
+        envelope,
+        agentId: turn.queued.run.agentId,
+        expectedImageId: null,
+        expectedSourceCommit: null,
+        expectedSourceTree: null,
+        expectedConfigDigest,
+        supportedValidatorId: SUPPORTED_VALIDATOR_ID,
+        supportedValidatorVersion: SUPPORTED_VALIDATOR_VERSION,
+        now: Date.now(),
+      });
+    }
     let evidenceJson: string | null = null;
     let projectionId: string | null = null;
     let projectionVersion: string | null = null;
     if (envelopeResult.ok) {
       evidenceJson = envelopeResult.evidenceJson;
-      const loader = createReadinessProjectionLoader({ evidenceJson });
-      const projectionResult = await loader({});
-      if (projectionResult.ok) {
-        projectionId = projectionResult.projection.id;
-        projectionVersion = projectionResult.projection.version;
+      if (envelopeResult.projection) {
+        projectionId = envelopeResult.projection.id;
+        projectionVersion = envelopeResult.projection.version;
       }
     }
     const preparationResult = prepareReadinessForRun({
@@ -292,6 +331,8 @@ export async function executeFollowupTurn(params: {
       projectionId,
       projectionVersion,
       now: Date.now(),
+      ...(v2PreparationInput ? { v2: v2PreparationInput } : {}),
+      ...(effectiveExecutionBackend !== undefined ? { effectiveExecutionBackend } : {}),
     });
     if (!preparationResult.ok) {
       execution = {
@@ -313,6 +354,16 @@ export async function executeFollowupTurn(params: {
       };
     } else {
       turn.queued.run.readinessGovernance = preparationResult.governance;
+      if (
+        preparationResult.governance.governed === true &&
+        preparationResult.governance.state.projectionPreparation != null
+      ) {
+        const holder = assembleGovernedRunLocalHolder({
+          governance: preparationResult.governance,
+          preparation: preparationResult.governance.state.projectionPreparation,
+        });
+        turn.queued.run.runLocalProjectionState = holder.runLocalProjectionState;
+      }
       try {
         execution = await executeAgentTurn({
           commandBody: turn.queued.prompt,

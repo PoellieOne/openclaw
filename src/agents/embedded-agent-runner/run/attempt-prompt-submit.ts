@@ -23,6 +23,53 @@ import { wrapStreamFnWithMessageTransform } from "./message-transform-stream-wra
 import type { RuntimeContextCustomMessage } from "./runtime-context-prompt.js";
 import type { EmbeddedRunAttemptParams } from "./types.js";
 
+/** Terminal governed readiness Gate-2 failure; never retried or failed over. */
+export class ReadinessGateBlockedError extends Error {
+  readonly classification: string;
+  readonly diagnosticRef: string;
+  constructor(classification: string, diagnosticRef: string, message: string) {
+    super(message);
+    this.name = "ReadinessGateBlockedError";
+    this.classification = classification;
+    this.diagnosticRef = diagnosticRef;
+  }
+}
+
+/**
+ * Gate-2 final pre-dispatch barrier. A governed V2 run requires a
+ * current-attempt Stage-B proof: exactly one readiness-governance entry whose
+ * digest equals the Stage-A prepared payload digest. Failure terminates the
+ * attempt before any provider dispatch (no retry, no fallback, no model switch).
+ */
+export function enforceReadinessGate2(input: {
+  runLocalProjectionState: EmbeddedRunAttemptParams["runLocalProjectionState"];
+}): void {
+  const runLocal = input.runLocalProjectionState;
+  if (!runLocal || !runLocal.governance.governed) {
+    return;
+  }
+  if (!runLocal.governance.state.mayExecute()) {
+    throw new ReadinessGateBlockedError(
+      runLocal.governance.state.classification,
+      "readiness-gate2-stage-a",
+      "Readiness Stage A did not pass for this attempt.",
+    );
+  }
+  const injection = runLocal.injection;
+  if (
+    !injection.ok ||
+    injection.entryCount !== 1 ||
+    (runLocal.preparation.expectedProjectionDigest !== null &&
+      injection.entryDigest !== runLocal.preparation.expectedProjectionDigest)
+  ) {
+    throw new ReadinessGateBlockedError(
+      injection.code ?? "PROJECTION_INJECTION_MISSING",
+      "readiness-gate2-stage-b",
+      "Readiness Stage B final-context proof is missing for this attempt.",
+    );
+  }
+}
+
 type PromptSubmissionSession = {
   messages: AgentMessage[];
   agent: {
@@ -49,7 +96,10 @@ type SteeringLease = {
 type TrajectoryRecorder = ReturnType<typeof createTrajectoryRuntimeRecorder>;
 
 export async function submitEmbeddedAttemptPrompt(input: {
-  attempt: Pick<EmbeddedRunAttemptParams, "sessionId" | "userTurnTranscriptRecorder">;
+  attempt: Pick<
+    EmbeddedRunAttemptParams,
+    "sessionId" | "userTurnTranscriptRecorder" | "runLocalProjectionState"
+  >;
   activeSession: PromptSubmissionSession;
   appendContext?: string;
   contextTokenBudget: number;
@@ -123,6 +173,10 @@ export async function submitEmbeddedAttemptPrompt(input: {
     messages: snapshotRecentMessages(normalizedReplayMessages),
     inFlightPrompt: input.transcriptPrompt,
   });
+
+  // Gate-2 pre-dispatch enforcement: a governed V2 run must carry a
+  // current-attempt Stage-B final-context proof before any provider dispatch.
+  enforceReadinessGate2({ runLocalProjectionState: attempt.runLocalProjectionState });
 
   let captureCurrentPromptForModel = false;
   const cleanupModelPromptTransform = installModelPromptTransform({

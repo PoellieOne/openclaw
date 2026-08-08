@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CanonicalReadinessEnvelopeLoadResult } from "../../agents/readiness/envelope-parser.js";
+import type { V2CanonicalReadinessEnvelopeLoadResult } from "../../agents/readiness/envelope-parser.js";
 import type { ReadinessGovernance } from "../../agents/readiness/types.js";
 import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { AgentTurnParams } from "./agent-runner-execution.types.js";
 
 const state = vi.hoisted(() => ({
   execute: vi.fn(),
-  loadCanonicalReadinessEnvelope: vi.fn(),
-  createReadinessProjectionLoader: vi.fn(),
+  loadCanonicalReadinessEnvelopeV2: vi.fn(),
   prepareReadinessForRun: vi.fn(),
   runMemoryFlushIfNeeded: vi.fn(),
   runPreflightCompactionIfNeeded: vi.fn(),
@@ -18,13 +17,8 @@ vi.mock("./agent-runner-execution.js", () => ({
 }));
 
 vi.mock("../../agents/readiness/canonical-envelope-reader.js", () => ({
-  loadCanonicalReadinessEnvelope: (...args: unknown[]) =>
-    state.loadCanonicalReadinessEnvelope(...args),
-}));
-
-vi.mock("../../agents/readiness/projection-loader.js", () => ({
-  createReadinessProjectionLoader: (...args: unknown[]) =>
-    state.createReadinessProjectionLoader(...args),
+  loadCanonicalReadinessEnvelopeV2: (...args: unknown[]) =>
+    state.loadCanonicalReadinessEnvelopeV2(...args),
 }));
 
 vi.mock("../../agents/readiness/run-preparation.js", () => ({
@@ -39,23 +33,49 @@ vi.mock("./agent-runner-memory.js", () => ({
 
 const { executePreparedReplyAgentRun } = await import("./agent-runner-execute.js");
 
-function makeReadyEnvelope(): CanonicalReadinessEnvelopeLoadResult {
+function makeReadyEnvelope(): V2CanonicalReadinessEnvelopeLoadResult {
   return {
     ok: true,
     envelope: {
-      envelopeVersion: "readiness-envelope.v1",
+      envelopeVersion: "readiness-envelope.v2",
       publishedAt: "2026-08-04T12:00:00.000Z",
       publishedBy: "test",
       evidence: {
-        contract_version: "readiness.v1",
+        contract_version: "readiness.v2",
         decision: "READY",
         valid_until: "2026-08-05T12:00:00.000Z",
         evaluated_at: "2026-08-04T12:00:00.000Z",
-        projection_id: "proj-v1",
-        projection_version: "1.0.0",
       },
       projection: { id: "proj-v1", version: "1.0.0", content: "test content" },
       binding: { kind: "sha256", projectionSha256: "a".repeat(64) },
+      semanticProjection: { id: "sem-v1", version: "1.0.0", sourceDigest: "b".repeat(64) },
+      generatedPayload: {
+        payloadId: "payload-v1",
+        payloadVersion: "1.0.0",
+        payloadSha256: "c".repeat(64),
+        payloadBytecount: 1024,
+        payloadFilename: "payload.json",
+      },
+      sourceManifest: {
+        manifestId: "canonical-source-manifest.v1",
+        manifestDigest: "d".repeat(64),
+      },
+      agentBinding: { agentId: "agent" },
+      runtimeBinding: { imageId: "img", sourceCommit: "commit", sourceTree: "tree" },
+      configBinding: { configDigest: "e".repeat(64) },
+      policyBinding: {
+        providerPolicy: "openai",
+        modelPolicy: "openai/gpt-5.6-sol",
+        preferredAuthMethod: "OPENAI_CHATGPT_CODEX_OAUTH",
+        fallbackPolicy: "PROHIBITED",
+      },
+      credentialRoute: {
+        authMethodPolicy: "OPENAI_CHATGPT_CODEX_OAUTH",
+        credentialRouteStatus: "AVAILABLE_VERIFIED",
+      },
+      validator: { validatorId: "readiness-validator-v2", validatorVersion: "1.0.0" },
+      revalidation: { revalidationRequired: false, reason: null, validatorVersion: "1.0.0" },
+      provenance: { generatorId: "test-generator", generatorVersion: "1.0.0" },
     },
     evidenceJson: JSON.stringify({ decision: "READY" }),
     projection: { id: "proj-v1", version: "1.0.0", content: "test content" },
@@ -217,11 +237,7 @@ function createMinimalContext(): Parameters<typeof executePreparedReplyAgentRun>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  state.loadCanonicalReadinessEnvelope.mockReturnValue(makeReadyEnvelope());
-  state.createReadinessProjectionLoader.mockReturnValue(async () => ({
-    ok: true,
-    projection: { id: "proj-v1", version: "1.0.0", content: "test content" },
-  }));
+  state.loadCanonicalReadinessEnvelopeV2.mockReturnValue(makeReadyEnvelope());
   state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedReady() });
   state.execute.mockResolvedValue({
     runId: "run-1",
@@ -234,12 +250,7 @@ beforeEach(() => {
 describe("executePreparedReplyAgentRun: direct route readiness threading", () => {
   it("READY canonical reader called once", async () => {
     await executePreparedReplyAgentRun(createMinimalContext());
-    expect(state.loadCanonicalReadinessEnvelope).toHaveBeenCalledTimes(1);
-  });
-
-  it("READY projection loader called once", async () => {
-    await executePreparedReplyAgentRun(createMinimalContext());
-    expect(state.createReadinessProjectionLoader).toHaveBeenCalledTimes(1);
+    expect(state.loadCanonicalReadinessEnvelopeV2).toHaveBeenCalledTimes(1);
   });
 
   it("READY preparation helper called once", async () => {
@@ -264,7 +275,7 @@ describe("executePreparedReplyAgentRun: direct route readiness threading", () =>
   });
 
   it("reader missing yields governed BLOCKED", async () => {
-    state.loadCanonicalReadinessEnvelope.mockReturnValue({
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
       ok: false,
       code: "EVIDENCE_MISSING",
       message: "not found",
@@ -279,7 +290,7 @@ describe("executePreparedReplyAgentRun: direct route readiness threading", () =>
   });
 
   it("malformed reader result yields governed BLOCKED", async () => {
-    state.loadCanonicalReadinessEnvelope.mockReturnValue({
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
       ok: false,
       code: "EVIDENCE_MALFORMED",
       message: "invalid",
@@ -294,7 +305,7 @@ describe("executePreparedReplyAgentRun: direct route readiness threading", () =>
   });
 
   it("sanitized reader failure yields governed BLOCKED", async () => {
-    state.loadCanonicalReadinessEnvelope.mockReturnValue({
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
       ok: false,
       code: "INTERNAL_EVALUATION_FAILURE_SANITIZED",
       message: "internal error",
@@ -308,15 +319,35 @@ describe("executePreparedReplyAgentRun: direct route readiness threading", () =>
     }
   });
 
-  it("projection loader not called on reader failure", async () => {
-    state.loadCanonicalReadinessEnvelope.mockReturnValue({
+  it("V2 preparation still called on reader failure", async () => {
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
       ok: false,
       code: "EVIDENCE_MISSING",
       message: "not found",
     });
     state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedBlocked() });
     await executePreparedReplyAgentRun(createMinimalContext());
-    expect(state.createReadinessProjectionLoader).not.toHaveBeenCalled();
+    expect(state.prepareReadinessForRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("V2 BLOCKED envelope still yields governed BLOCKED", async () => {
+    state.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
+      ok: true,
+      envelope: {
+        envelopeVersion: "readiness-envelope.v2",
+        publishedAt: "2026-08-04T12:00:00.000Z",
+        publishedBy: "test",
+        evidence: { contract_version: "readiness.v2", decision: "BLOCKED" },
+      },
+      evidenceJson: JSON.stringify({ decision: "BLOCKED" }),
+    });
+    state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedBlocked() });
+    await executePreparedReplyAgentRun(createMinimalContext());
+    const call = state.execute.mock.calls[0]?.[0] as AgentTurnParams;
+    expect(call.followupRun.run.readinessGovernance?.governed).toBe(true);
+    if (call.followupRun.run.readinessGovernance?.governed) {
+      expect(call.followupRun.run.readinessGovernance.state.mayExecute()).toBe(false);
+    }
   });
 
   it("model route never reaches executeAgentTurn with undefined governance", async () => {
@@ -338,12 +369,12 @@ describe("executePreparedReplyAgentRun: direct route readiness threading", () =>
 
   it("readiness preparation occurs after safe preflight", async () => {
     await executePreparedReplyAgentRun(createMinimalContext());
-    expect(state.loadCanonicalReadinessEnvelope).toHaveBeenCalledTimes(1);
+    expect(state.loadCanonicalReadinessEnvelopeV2).toHaveBeenCalledTimes(1);
   });
 
   it("readiness preparation occurs before executeAgentTurn", async () => {
     const order: string[] = [];
-    state.loadCanonicalReadinessEnvelope.mockImplementation(() => {
+    state.loadCanonicalReadinessEnvelopeV2.mockImplementation(() => {
       order.push("readiness");
       return makeReadyEnvelope();
     });

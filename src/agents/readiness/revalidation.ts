@@ -1,0 +1,84 @@
+export const RevalidationTrigger = {
+  NEW_RUN_OR_SESSION: "NEW_RUN_OR_SESSION",
+  CONTINUATION: "CONTINUATION",
+  COMPACTION: "COMPACTION",
+  SEMANTIC_PROJECTION_CHANGE: "SEMANTIC_PROJECTION_CHANGE",
+  GENERATED_PAYLOAD_CHANGE: "GENERATED_PAYLOAD_CHANGE",
+  CANONICAL_SOURCE_MANIFEST_CHANGE: "CANONICAL_SOURCE_MANIFEST_CHANGE",
+  AGENT_CHANGE: "AGENT_CHANGE",
+  EFFECTIVE_CONFIG_CHANGE: "EFFECTIVE_CONFIG_CHANGE",
+  PROVIDER_POLICY_CHANGE: "PROVIDER_POLICY_CHANGE",
+  MODEL_POLICY_CHANGE: "MODEL_POLICY_CHANGE",
+  AUTH_PROFILE_POLICY_CHANGE: "AUTH_PROFILE_POLICY_CHANGE",
+  RUNTIME_IMAGE_CHANGE_OR_RESTART: "RUNTIME_IMAGE_CHANGE_OR_RESTART",
+  VALIDATOR_VERSION_CHANGE: "VALIDATOR_VERSION_CHANGE",
+  EXPLICIT_REVALIDATION_REQUIRED: "EXPLICIT_REVALIDATION_REQUIRED",
+  CACHE_MISMATCH: "CACHE_MISMATCH",
+} as const;
+
+export type RevalidationTrigger = (typeof RevalidationTrigger)[keyof typeof RevalidationTrigger];
+
+export const RevalidationMechanism = {
+  DETECTED_BY_EXISTING_PER_RUN_BINDING: "DETECTED_BY_EXISTING_PER_RUN_BINDING",
+  DEFERRED_RUNTIME_VERIFICATION: "DEFERRED_RUNTIME_VERIFICATION",
+  DIAGNOSTIC_ONLY: "DIAGNOSTIC_ONLY",
+} as const;
+
+export type RevalidationMechanism =
+  (typeof RevalidationMechanism)[keyof typeof RevalidationMechanism];
+
+export const REVALIDATION_TRIGGER_MATRIX: Readonly<
+  Record<RevalidationTrigger, RevalidationMechanism>
+> = Object.freeze({
+  NEW_RUN_OR_SESSION: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  CONTINUATION: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  COMPACTION: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  SEMANTIC_PROJECTION_CHANGE: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  GENERATED_PAYLOAD_CHANGE: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  CANONICAL_SOURCE_MANIFEST_CHANGE: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  AGENT_CHANGE: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  EFFECTIVE_CONFIG_CHANGE: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  PROVIDER_POLICY_CHANGE: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  MODEL_POLICY_CHANGE: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  AUTH_PROFILE_POLICY_CHANGE: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  RUNTIME_IMAGE_CHANGE_OR_RESTART: RevalidationMechanism.DEFERRED_RUNTIME_VERIFICATION,
+  VALIDATOR_VERSION_CHANGE: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  EXPLICIT_REVALIDATION_REQUIRED: RevalidationMechanism.DETECTED_BY_EXISTING_PER_RUN_BINDING,
+  CACHE_MISMATCH: RevalidationMechanism.DIAGNOSTIC_ONLY,
+});
+
+export type RevalidationTriggerResult = {
+  trigger: RevalidationTrigger;
+  mechanism: RevalidationMechanism;
+};
+
+export function resolveRevalidationMechanism(
+  trigger: RevalidationTrigger,
+): RevalidationTriggerResult {
+  return { trigger, mechanism: REVALIDATION_TRIGGER_MATRIX[trigger] };
+}
+
+export function isRevalidationTrigger(value: unknown): value is RevalidationTrigger {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(REVALIDATION_TRIGGER_MATRIX, value)
+  );
+}
+
+export const REVALIDATION_TRIGGERS: readonly RevalidationTrigger[] = [
+  RevalidationTrigger.NEW_RUN_OR_SESSION,
+  RevalidationTrigger.CONTINUATION,
+  RevalidationTrigger.COMPACTION,
+  RevalidationTrigger.SEMANTIC_PROJECTION_CHANGE,
+  RevalidationTrigger.GENERATED_PAYLOAD_CHANGE,
+  RevalidationTrigger.CANONICAL_SOURCE_MANIFEST_CHANGE,
+  RevalidationTrigger.AGENT_CHANGE,
+  RevalidationTrigger.EFFECTIVE_CONFIG_CHANGE,
+  RevalidationTrigger.PROVIDER_POLICY_CHANGE,
+  RevalidationTrigger.MODEL_POLICY_CHANGE,
+  RevalidationTrigger.AUTH_PROFILE_POLICY_CHANGE,
+  RevalidationTrigger.RUNTIME_IMAGE_CHANGE_OR_RESTART,
+  RevalidationTrigger.VALIDATOR_VERSION_CHANGE,
+  RevalidationTrigger.EXPLICIT_REVALIDATION_REQUIRED,
+  RevalidationTrigger.CACHE_MISMATCH,
+];

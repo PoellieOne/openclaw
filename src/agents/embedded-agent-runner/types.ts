@@ -201,7 +201,8 @@ export type EmbeddedAgentRunMeta = {
       | "image_size"
       | "retry_limit"
       | "incomplete_turn"
-      | "hook_block";
+      | "hook_block"
+      | "readiness_blocked";
     message: string;
     /** True only when model fallback can retry this terminal error without repeating side effects. */
     fallbackSafe?: boolean;

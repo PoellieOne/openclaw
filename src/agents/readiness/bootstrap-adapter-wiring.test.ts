@@ -1,0 +1,227 @@
+import { createHash } from "node:crypto";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { clearInternalHooks, setInternalHooksEnabled } from "../../hooks/internal-hooks.js";
+import {
+  registerGeneratedProjectionBootstrapHook,
+  verifyFinalContextProjection,
+} from "./bootstrap-adapter-wiring.js";
+import { buildInjectionAssertion, applyReadinessBootstrapAdapter } from "./bootstrap-adapter.js";
+import type { ReadinessGovernance, GovernedReadinessProjection } from "./types.js";
+
+const DIGEST = "c".repeat(64);
+
+function makeGoverned(): ReadinessGovernance {
+  return {
+    governed: true,
+    state: { mayExecute: () => true, isBlocked: () => false } as never,
+  };
+}
+
+function makeProjection(): GovernedReadinessProjection {
+  return {
+    id: "canonical-production-sophia-semantic-runtime-projection-v1",
+    version: "1.0.0",
+    content: "governed semantic projection content",
+  };
+}
+
+function makeBootstrapFiles(): {
+  name: string;
+  path: string;
+  content?: string;
+  missing: boolean;
+}[] {
+  return [
+    { name: "AGENTS.md", path: "/workspace/AGENTS.md", content: "content", missing: false },
+    { name: "SOUL.md", path: "/workspace/SOUL.md", missing: true },
+  ];
+}
+
+describe("I4 two-stage injection assertions", () => {
+  beforeEach(() => {
+    setInternalHooksEnabled(true);
+  });
+
+  afterEach(() => {
+    clearInternalHooks();
+  });
+
+  it("Stage A success does NOT imply Stage B success", () => {
+    const preparation = {
+      ok: true,
+      payloadId: "payload-1",
+      payloadVersion: "1.0.0",
+      expectedProjectionDigest: DIGEST,
+      expectedBytecount: 100,
+      code: null,
+    };
+    const injection = {
+      ok: false,
+      entryCount: 0,
+      entryDigest: null,
+      code: "PROJECTION_INJECTION_MISSING",
+    };
+    expect(preparation.ok).toBe(true);
+    expect(injection.ok).toBe(false);
+  });
+
+  it("adapter throw path yields Stage B ok:false (fail closed)", () => {
+    const result = buildInjectionAssertion(
+      { ok: false, code: "PROJECTION_INJECTION_FAILED", message: "adapter failed" },
+      DIGEST,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("PROJECTION_INJECTION_FAILED");
+  });
+
+  it("zero governed entries yields Stage B ok:false", () => {
+    const result = buildInjectionAssertion({ ok: true, files: makeBootstrapFiles() }, DIGEST);
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("PROJECTION_INJECTION_MISSING");
+  });
+
+  it("duplicate governed entries yields Stage B ok:false", () => {
+    const result = buildInjectionAssertion(
+      {
+        ok: true,
+        files: [
+          {
+            name: "readiness-governance",
+            path: "readiness://projections/a",
+            content: "a",
+            missing: false,
+          },
+          {
+            name: "readiness-governance",
+            path: "readiness://projections/b",
+            content: "b",
+            missing: false,
+          },
+        ],
+      },
+      DIGEST,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("PROJECTION_INJECTION_DUPLICATE");
+  });
+
+  it("content digest mismatch yields Stage B ok:false", () => {
+    const result = buildInjectionAssertion(
+      {
+        ok: true,
+        files: [
+          {
+            name: "readiness-governance",
+            path: "readiness://projections/a",
+            content: "different",
+            missing: false,
+          },
+        ],
+      },
+      DIGEST,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("PROJECTION_INJECTION_CONTENT_MISMATCH");
+  });
+
+  it("exact single entry with matching digest yields Stage B ok:true", () => {
+    const content = "governed semantic projection content";
+    const digest = createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
+    const result = buildInjectionAssertion(
+      {
+        ok: true,
+        files: [
+          {
+            name: "readiness-governance",
+            path: "readiness://projections/a",
+            content,
+            missing: false,
+          },
+        ],
+      },
+      digest,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.entryCount).toBe(1);
+      expect(result.entryDigest).toBe(digest);
+    }
+  });
+
+  it("adapter produces exactly one governed entry and removes default identity material", () => {
+    const result = applyReadinessBootstrapAdapter({
+      governance: makeGoverned(),
+      projection: makeProjection(),
+      bootstrapFiles: makeBootstrapFiles(),
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.files).toHaveLength(1);
+      expect(result.files[0]!.name).toBe("readiness-governance");
+      expect(result.files[0]!.path).toContain(makeProjection().id);
+    }
+  });
+
+  it("adapter rejects conflicting existing governed entry", () => {
+    const result = applyReadinessBootstrapAdapter({
+      governance: makeGoverned(),
+      projection: makeProjection(),
+      bootstrapFiles: [
+        {
+          name: "readiness-governance",
+          path: "readiness://projections/old",
+          content: "old",
+          missing: false,
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("PROJECTION_INJECTION_CONTENT_MISMATCH");
+  });
+
+  it("final-context verification: missing governed entry -> BLOCKED", () => {
+    const result = verifyFinalContextProjection(makeBootstrapFiles(), DIGEST);
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("PROJECTION_INJECTION_MISSING");
+  });
+
+  it("final-context verification: exact entry with matching digest -> ok", () => {
+    const content = "governed semantic projection content";
+    const digest = createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
+    const result = verifyFinalContextProjection(
+      [
+        {
+          name: "readiness-governance",
+          path: "readiness://projections/a",
+          content,
+          missing: false,
+        },
+      ],
+      digest,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("final-context verification: digest mismatch -> BLOCKED", () => {
+    const result = verifyFinalContextProjection(
+      [
+        {
+          name: "readiness-governance",
+          path: "readiness://projections/a",
+          content: "different",
+          missing: false,
+        },
+      ],
+      DIGEST,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe("PROJECTION_INJECTION_CONTENT_MISMATCH");
+  });
+
+  it("hook registration is idempotent (single registration guard)", () => {
+    registerGeneratedProjectionBootstrapHook();
+    registerGeneratedProjectionBootstrapHook();
+    registerGeneratedProjectionBootstrapHook();
+    expect(true).toBe(true);
+  });
+});

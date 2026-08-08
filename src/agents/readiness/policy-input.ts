@@ -1,3 +1,4 @@
+import { CONTRACT_VERSION_V2 } from "./contracts-v2.js";
 import type {
   ReadinessPolicyResolutionInput,
   ReadinessRouteClassification,
@@ -44,6 +45,7 @@ export function resolveReadinessPolicyInput(params: {
           mode: "required",
           applicability: "governed",
           disablePermittedByGoverningPolicy: false,
+          contractVersion: CONTRACT_VERSION_V2,
           projectionBindingRequired: true,
         },
       ],
