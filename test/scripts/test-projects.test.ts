@@ -1659,6 +1659,7 @@ describe("scripts/test-projects changed-target routing", () => {
           "test/scripts/ios-version.test.ts",
           "test/scripts/package-mac-app.test.ts",
           "test/scripts/test-install-sh-docker.test.ts",
+          "test/scripts/build-metadata.test.ts",
         ],
       ],
       [
@@ -2182,6 +2183,7 @@ describe("scripts/test-projects changed-target routing", () => {
           "test/scripts/ios-version.test.ts",
           "test/scripts/package-mac-app.test.ts",
           "test/scripts/test-install-sh-docker.test.ts",
+          "test/scripts/build-metadata.test.ts",
         ],
       ],
       [

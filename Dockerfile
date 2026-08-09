@@ -115,8 +115,10 @@ RUN set -eux; \
 # Public source provenance supplied by release automation or local setup. Keep
 # these after the dependency layer so a new timestamp does not invalidate install.
 ARG GIT_COMMIT=""
+ARG OPENCLAW_BUILD_TREE=""
 ARG OPENCLAW_BUILD_TIMESTAMP=""
 ENV GIT_COMMIT=${GIT_COMMIT} \
+    OPENCLAW_BUILD_TREE=${OPENCLAW_BUILD_TREE} \
     OPENCLAW_BUILD_TIMESTAMP=${OPENCLAW_BUILD_TIMESTAMP}
 
 COPY . .

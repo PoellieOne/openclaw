@@ -760,10 +760,14 @@ if [[ -n "$OFFLINE_MODE" ]]; then
 elif [[ "$IMAGE_NAME" == "openclaw:local" ]]; then
   echo "==> Building Docker image: $IMAGE_NAME"
   BUILD_GIT_COMMIT="$(openclaw_resolve_git_commit "$ROOT_DIR")"
+  BUILD_GIT_TREE="$(openclaw_resolve_git_tree "$ROOT_DIR")"
   BUILD_TIMESTAMP="$(openclaw_resolve_build_timestamp)"
   PROVENANCE_BUILD_ARGS=(--build-arg "OPENCLAW_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}")
   if [[ "$BUILD_GIT_COMMIT" =~ ^[0-9a-fA-F]{40}$ ]]; then
     PROVENANCE_BUILD_ARGS+=(--build-arg "GIT_COMMIT=${BUILD_GIT_COMMIT}")
+  fi
+  if [[ "$BUILD_GIT_TREE" =~ ^[0-9a-fA-F]{40}$ ]]; then
+    PROVENANCE_BUILD_ARGS+=(--build-arg "OPENCLAW_BUILD_TREE=${BUILD_GIT_TREE}")
   fi
   run_docker_build \
     "${PROVENANCE_BUILD_ARGS[@]}" \

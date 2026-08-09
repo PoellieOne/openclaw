@@ -11,6 +11,10 @@ openclaw_is_full_git_commit() {
   [[ "${1:-}" =~ ^[0-9a-fA-F]{40}$ ]]
 }
 
+openclaw_is_full_git_tree() {
+  [[ "${1:-}" =~ ^[0-9a-fA-F]{40}$ ]]
+}
+
 openclaw_normalize_utc_build_timestamp() {
   local value="${1:-}"
   local LC_ALL=C
@@ -92,6 +96,37 @@ openclaw_resolve_git_commit() {
   if [[ -z "${candidate}" ]]; then
     if [[ "${OPENCLAW_REQUIRE_BUILD_METADATA:-0}" == "1" ]]; then
       echo "ERROR: Unable to resolve a full Git commit for the release build." >&2
+      return 1
+    fi
+    printf 'unknown'
+    return 0
+  fi
+  printf '%s' "${candidate}" | tr '[:upper:]' '[:lower:]'
+}
+
+openclaw_resolve_git_tree() {
+  local root_dir="$1"
+  local candidate
+  candidate="$(openclaw_trim_build_metadata_value "${OPENCLAW_BUILD_TREE:-}")"
+  if [[ -n "${candidate}" ]]; then
+    if ! openclaw_is_full_git_tree "${candidate}"; then
+      echo "ERROR: OPENCLAW_BUILD_TREE must be a full 40-character hexadecimal tree." >&2
+      return 1
+    fi
+    printf '%s' "${candidate}" | tr '[:upper:]' '[:lower:]'
+    return 0
+  fi
+
+  # The tree is resolved from the same checked-out source as the commit so the
+  # immutable build-info binds both commit and tree to one exact source state.
+  candidate="$( (cd "${root_dir}" && git rev-parse HEAD^{tree}) 2>/dev/null || true)"
+  if [[ -n "${candidate}" ]] && ! openclaw_is_full_git_tree "${candidate}"; then
+    echo "ERROR: git rev-parse HEAD^{tree} must return a full 40-character hexadecimal tree." >&2
+    return 1
+  fi
+  if [[ -z "${candidate}" ]]; then
+    if [[ "${OPENCLAW_REQUIRE_BUILD_METADATA:-0}" == "1" ]]; then
+      echo "ERROR: Unable to resolve a full Git tree for the release build." >&2
       return 1
     fi
     printf 'unknown'

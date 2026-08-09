@@ -1036,14 +1036,19 @@ printf 'status=%s\\n' "$status"
   it("passes one source identity into local Docker and Podman builds", () => {
     const dockerSetup = readFileSync(DOCKER_SETUP_PATH, "utf8");
     const podmanSetup = readFileSync(PODMAN_SETUP_PATH, "utf8");
+    const dockerfile = readFileSync("Dockerfile", "utf8");
 
     for (const setupScript of [dockerSetup, podmanSetup]) {
       expect(setupScript).toContain("scripts/lib/build-metadata.sh");
       expect(setupScript).toContain("openclaw_resolve_git_commit");
+      expect(setupScript).toContain("openclaw_resolve_git_tree");
       expect(setupScript).toContain("openclaw_resolve_build_timestamp");
       expect(setupScript).toContain("OPENCLAW_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}");
       expect(setupScript).toContain("GIT_COMMIT=${BUILD_GIT_COMMIT}");
+      expect(setupScript).toContain("OPENCLAW_BUILD_TREE=${BUILD_GIT_TREE}");
     }
+    expect(dockerfile).toContain('ARG OPENCLAW_BUILD_TREE=""');
+    expect(dockerfile).toContain("OPENCLAW_BUILD_TREE=${OPENCLAW_BUILD_TREE}");
   });
 
   it("keeps the Podman Quadlet template aligned with setup substitutions", () => {

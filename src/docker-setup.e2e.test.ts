@@ -147,6 +147,7 @@ describe("scripts/docker/setup.sh", () => {
       /--build-arg OPENCLAW_BUILD_TIMESTAMP=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/u,
     );
     expect(log).toContain(`--build-arg GIT_COMMIT=${buildCommit}`);
+    expect(log).not.toContain("--build-arg OPENCLAW_BUILD_TREE=");
     expect(log).toContain(
       `run --rm --no-deps ${prestartContainerEnvFlags} --entrypoint node openclaw-gateway dist/index.js onboard --mode local --no-install-daemon --gateway-auth token --gateway-token-ref-env OPENCLAW_GATEWAY_TOKEN --skip-ui --suppress-gateway-token-output`,
     );

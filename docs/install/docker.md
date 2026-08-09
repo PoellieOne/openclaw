@@ -106,9 +106,11 @@ Hosting multiple users? See [Multi-tenant hosting](/gateway/multi-tenant-hosting
 
 ```bash
 BUILD_GIT_COMMIT="$(git rev-parse HEAD)"
+BUILD_GIT_TREE="$(git rev-parse HEAD^{tree})"
 BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 docker build \
   --build-arg "GIT_COMMIT=${BUILD_GIT_COMMIT}" \
+  --build-arg "OPENCLAW_BUILD_TREE=${BUILD_GIT_TREE}" \
   --build-arg "OPENCLAW_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}" \
   -t openclaw:local -f Dockerfile .
 docker compose run --rm --no-deps --entrypoint node openclaw-gateway \
@@ -120,8 +122,8 @@ docker compose up -d openclaw-gateway
 
 The Docker context excludes `.git`. Pass the source identity as build arguments
 as shown above so the image's About screen reports the checked-out commit and
-one build timestamp. `scripts/docker/setup.sh` resolves and passes both values
-automatically.
+tree plus one build timestamp. `scripts/docker/setup.sh` resolves and passes
+all three values automatically.
 
 <Note>
 Run `docker compose` from the repo root. If you enabled `OPENCLAW_EXTRA_MOUNTS` or `OPENCLAW_HOME_VOLUME`, the setup script writes `docker-compose.extra.yml`; include it after any `docker-compose.override.yml` you maintain yourself, e.g. `-f docker-compose.yml -f docker-compose.override.yml -f docker-compose.extra.yml`.
@@ -208,6 +210,7 @@ of Chromium:
 
 ```bash
 SOURCE_SHA="$(git rev-parse HEAD)"
+SOURCE_TREE="$(git rev-parse HEAD^{tree})"
 BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 REGISTRY="registry.example.com/fakeco"
 
@@ -217,6 +220,7 @@ build_gateway_image() {
   docker buildx build \
     --platform linux/amd64,linux/arm64 \
     --build-arg "GIT_COMMIT=${SOURCE_SHA}" \
+    --build-arg "OPENCLAW_BUILD_TREE=${SOURCE_TREE}" \
     --build-arg "OPENCLAW_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}" \
     --build-arg "OPENCLAW_EXTENSIONS=${selected_plugin}" \
     --build-arg OPENCLAW_INSTALL_BROWSER= \

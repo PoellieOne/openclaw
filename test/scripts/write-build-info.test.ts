@@ -189,6 +189,24 @@ describe("write-build-info", () => {
     );
   });
 
+  it("keeps tree null when an explicit commit is supplied without a tree", () => {
+    const rootDir = createPackage();
+    const execFileSync = vi.fn(() => {
+      throw new Error("Git fallback should not run");
+    });
+
+    const info = resolveBuildInfo({
+      rootDir,
+      env: { GIT_COMMIT: "1234567890abcdef1234567890abcdef12345678" },
+      execFileSync,
+      now: () => new Date("2026-07-10T01:02:03.000Z"),
+    });
+
+    expect(info.commit).toBe("1234567890abcdef1234567890abcdef12345678");
+    expect(info.tree).toBeNull();
+    expect(execFileSync).not.toHaveBeenCalled();
+  });
+
   it("normalizes valid UTC timestamps and rejects offsets or impossible dates", () => {
     expect(normalizeBuildTimestamp("2026-07-10T12:34:56.7Z")).toBe("2026-07-10T12:34:56.700Z");
     expect(() => normalizeBuildTimestamp("2026-07-10T12:34:56+00:00")).toThrow(

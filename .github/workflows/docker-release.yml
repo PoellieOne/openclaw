@@ -140,6 +140,7 @@ jobs:
     outputs:
       built_at: ${{ steps.build_provenance.outputs.built_at }}
       source_sha: ${{ steps.build_provenance.outputs.source_sha }}
+      source_tree: ${{ steps.build_provenance.outputs.source_tree }}
     steps:
       - name: Checkout selected source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -152,7 +153,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # source_sha and source_tree come from the same checked-out source so
+          # the immutable build-info binds commit and tree to one exact state.
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "source_tree=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
   # KEEP THIS WORKFLOW ON GITHUB-HOSTED RUNNERS.
@@ -291,6 +295,7 @@ jobs:
           build-args: |
             GIT_COMMIT=${{ needs.resolve_build_provenance.outputs.source_sha }}
             OPENCLAW_BUILD_TIMESTAMP=${{ needs.resolve_build_provenance.outputs.built_at }}
+            OPENCLAW_BUILD_TREE=${{ needs.resolve_build_provenance.outputs.source_tree }}
             OPENCLAW_EXTENSIONS=diagnostics-otel,codex
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
@@ -313,6 +318,7 @@ jobs:
           build-args: |
             GIT_COMMIT=${{ needs.resolve_build_provenance.outputs.source_sha }}
             OPENCLAW_BUILD_TIMESTAMP=${{ needs.resolve_build_provenance.outputs.built_at }}
+            OPENCLAW_BUILD_TREE=${{ needs.resolve_build_provenance.outputs.source_tree }}
             OPENCLAW_EXTENSIONS=diagnostics-otel,codex
             OPENCLAW_INSTALL_BROWSER=1
           tags: ${{ steps.tags.outputs.browser }}
@@ -499,6 +505,7 @@ jobs:
           build-args: |
             GIT_COMMIT=${{ needs.resolve_build_provenance.outputs.source_sha }}
             OPENCLAW_BUILD_TIMESTAMP=${{ needs.resolve_build_provenance.outputs.built_at }}
+            OPENCLAW_BUILD_TREE=${{ needs.resolve_build_provenance.outputs.source_tree }}
             OPENCLAW_EXTENSIONS=diagnostics-otel,codex
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
@@ -521,6 +528,7 @@ jobs:
           build-args: |
             GIT_COMMIT=${{ needs.resolve_build_provenance.outputs.source_sha }}
             OPENCLAW_BUILD_TIMESTAMP=${{ needs.resolve_build_provenance.outputs.built_at }}
+            OPENCLAW_BUILD_TREE=${{ needs.resolve_build_provenance.outputs.source_tree }}
             OPENCLAW_EXTENSIONS=diagnostics-otel,codex
             OPENCLAW_INSTALL_BROWSER=1
           tags: ${{ steps.tags.outputs.browser }}

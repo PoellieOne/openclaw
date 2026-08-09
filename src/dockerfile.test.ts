@@ -290,14 +290,17 @@ describe("Dockerfile", () => {
     const dockerfile = await readFile(dockerfilePath, "utf8");
     const installIndex = dockerfile.indexOf("pnpm install --frozen-lockfile");
     const commitArgIndex = dockerfile.indexOf('ARG GIT_COMMIT=""');
+    const treeArgIndex = dockerfile.indexOf('ARG OPENCLAW_BUILD_TREE=""');
     const timestampArgIndex = dockerfile.indexOf('ARG OPENCLAW_BUILD_TIMESTAMP=""');
     const provenanceEnvIndex = dockerfile.indexOf("ENV GIT_COMMIT=${GIT_COMMIT}");
     const backendBuildIndex = dockerfile.indexOf("pnpm build:docker");
     const uiBuildIndex = dockerfile.indexOf("pnpm ui:build");
 
     expect(commitArgIndex).toBeGreaterThan(installIndex);
-    expect(timestampArgIndex).toBeGreaterThan(commitArgIndex);
+    expect(treeArgIndex).toBeGreaterThan(commitArgIndex);
+    expect(timestampArgIndex).toBeGreaterThan(treeArgIndex);
     expect(provenanceEnvIndex).toBeGreaterThan(timestampArgIndex);
+    expect(dockerfile).toContain("OPENCLAW_BUILD_TREE=${OPENCLAW_BUILD_TREE}");
     expect(dockerfile).toContain("OPENCLAW_BUILD_TIMESTAMP=${OPENCLAW_BUILD_TIMESTAMP}");
     expect(dockerfile).toContain('OPENCLAW_BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"');
     expect(backendBuildIndex).toBeGreaterThan(provenanceEnvIndex);
@@ -311,15 +314,19 @@ describe("Dockerfile", () => {
     const selectedPluginDocs = docs.slice(selectedPluginStart, selectedPluginEnd);
 
     expect(docs).toContain('BUILD_GIT_COMMIT="$(git rev-parse HEAD)"');
+    expect(docs).toContain('BUILD_GIT_TREE="$(git rev-parse HEAD^{tree})"');
     expect(docs).toContain('BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"');
     expect(docs).toContain('--build-arg "GIT_COMMIT=${BUILD_GIT_COMMIT}"');
+    expect(docs).toContain('--build-arg "OPENCLAW_BUILD_TREE=${BUILD_GIT_TREE}"');
     expect(docs).toContain('--build-arg "OPENCLAW_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}"');
     expect(docs).toContain("The Docker context excludes `.git`.");
     expect(selectedPluginStart).toBeGreaterThan(-1);
     expect(selectedPluginEnd).toBeGreaterThan(selectedPluginStart);
     expect(selectedPluginDocs).toContain('SOURCE_SHA="$(git rev-parse HEAD)"');
+    expect(selectedPluginDocs).toContain('SOURCE_TREE="$(git rev-parse HEAD^{tree})"');
     expect(selectedPluginDocs).toContain('BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"');
     expect(selectedPluginDocs).toContain('--build-arg "GIT_COMMIT=${SOURCE_SHA}"');
+    expect(selectedPluginDocs).toContain('--build-arg "OPENCLAW_BUILD_TREE=${SOURCE_TREE}"');
     expect(selectedPluginDocs).toContain(
       '--build-arg "OPENCLAW_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}"',
     );
@@ -435,12 +442,16 @@ describe("Dockerfile", () => {
     expect(workflow).not.toContain("OPENCLAW_EXTENSIONS=diagnostics-otel\n");
   });
 
-  it("uses one source commit and timestamp for every official Docker artifact", async () => {
+  it("uses one source commit and tree for every official Docker artifact", async () => {
     const workflow = await readFile(dockerReleaseWorkflowPath, "utf8");
 
     expect(workflow).toContain("resolve_build_provenance:");
     expect(workflow).toContain("built_at: ${{ steps.build_provenance.outputs.built_at }}");
     expect(workflow).toContain("source_sha: ${{ steps.build_provenance.outputs.source_sha }}");
+    expect(workflow).toContain("source_tree: ${{ steps.build_provenance.outputs.source_tree }}");
+    expect(workflow).toContain(
+      'echo "source_tree=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"',
+    );
     expect(workflow.match(/date -u \+%Y-%m-%dT%H:%M:%SZ/gu)).toHaveLength(1);
     expect(
       workflow.split("BUILD_TIMESTAMP: ${{ needs.resolve_build_provenance.outputs.built_at }}")
@@ -452,6 +463,11 @@ describe("Dockerfile", () => {
     expect(
       workflow.split("GIT_COMMIT=${{ needs.resolve_build_provenance.outputs.source_sha }}").length -
         1,
+    ).toBe(4);
+    expect(
+      workflow.split(
+        "OPENCLAW_BUILD_TREE=${{ needs.resolve_build_provenance.outputs.source_tree }}",
+      ).length - 1,
     ).toBe(4);
     expect(
       workflow.split(
