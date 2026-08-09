@@ -4,6 +4,14 @@ import { ReadinessCode } from "./codes.js";
 import { prepareReadinessForRun } from "./run-preparation.js";
 import type { ReadinessPreparationInput } from "./run-preparation.js";
 
+/**
+ * ReadinessPreparationInput["v2"] is an indexed access on an optional
+ * property, so it includes `undefined`; spreading such a value makes every
+ * field optional. The exact v2-preparation contract is the non-nullable
+ * indexed type.
+ */
+type V2PreparationInput = NonNullable<ReadinessPreparationInput["v2"]>;
+
 const NOW = 2000000000000;
 const FUTURE = new Date(NOW + 86400000).toISOString();
 
@@ -65,7 +73,7 @@ function makeV2Evidence(): string {
   });
 }
 
-function makeV2Input(payloadPath: string): ReadinessPreparationInput["v2"] {
+function makeV2Input(payloadPath: string): V2PreparationInput {
   return {
     payloadPath,
     expectedPayloadId: PAYLOAD_ID,

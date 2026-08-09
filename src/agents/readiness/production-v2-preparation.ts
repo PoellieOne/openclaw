@@ -116,14 +116,15 @@ export function computeGovernedExpectedConfigDigest(source: ReadinessConfigSourc
 /**
  * Builds the complete v2 expected-input block from the V2 envelope.
  * Runtime identity and credential truth are read from the envelope only;
- * they are never self-attested here.
+ * they are never self-attested here. Runtime image/source truth must be
+ * supplied as exact resolved provenance (never null/unresolved).
  */
 export function buildGovernedV2PreparationInput(params: {
   envelope: ReadyV2CanonicalReadinessEnvelope;
   agentId: string;
-  expectedImageId: string | null;
-  expectedSourceCommit: string | null;
-  expectedSourceTree: string | null;
+  expectedImageId: string;
+  expectedSourceCommit: string;
+  expectedSourceTree: string;
   expectedConfigDigest: string;
   supportedValidatorId: string;
   supportedValidatorVersion: string;
@@ -146,9 +147,9 @@ export function buildGovernedV2PreparationInput(params: {
     expectedSourceManifestDigest: envelope.sourceManifest.manifestDigest,
     validation: {
       expectedAgentId: params.agentId,
-      expectedImageId: params.expectedImageId ?? "",
-      expectedSourceCommit: params.expectedSourceCommit ?? "",
-      expectedSourceTree: params.expectedSourceTree ?? "",
+      expectedImageId: params.expectedImageId,
+      expectedSourceCommit: params.expectedSourceCommit,
+      expectedSourceTree: params.expectedSourceTree,
       expectedConfigDigest: params.expectedConfigDigest,
       expectedProviderPolicy: envelope.policyBinding.providerPolicy,
       expectedModelPolicy: envelope.policyBinding.modelPolicy,

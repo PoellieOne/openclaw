@@ -5,6 +5,7 @@ import {
   enforceReadinessGate2,
   ReadinessGateBlockedError,
 } from "../embedded-agent-runner/run/attempt-prompt-submit.js";
+import type { WorkspaceBootstrapFile } from "../workspace.js";
 import type { RunLocalProjectionState } from "./bootstrap-adapter-wiring.js";
 import {
   ExecutionBackend,
@@ -72,12 +73,24 @@ function makeHolder(overrides?: Partial<RunLocalProjectionState>): RunLocalProje
   };
 }
 
-function makeGovernedEntry(): { name: string; path: string; content: string; missing: boolean } {
+/**
+ * Governed injection entries use the adapter's GOVERNED_ENTRY_NAME
+ * ("readiness-governance"), which is intentionally wider than the canonical
+ * WorkspaceBootstrapFile name union. Production crosses that boundary by
+ * construction (bootstrap-adapter-wiring assigns adapter output into
+ * WorkspaceBootstrapFile[]); the name-field cast below mirrors exactly that
+ * production boundary cast. `name` is intentionally absent from the
+ * override type so the spread cannot widen the literal back to `string`.
+ */
+function makeGovernedEntry(
+  overrides?: Partial<{ path: string; content: string; missing: boolean }>,
+): WorkspaceBootstrapFile {
   return {
-    name: "readiness-governance",
+    name: "readiness-governance" as WorkspaceBootstrapFile["name"],
     path: "readiness://projections/p1",
     content: PAYLOAD_CONTENT,
     missing: false,
+    ...overrides,
   };
 }
 
@@ -117,12 +130,7 @@ describe("I6E Stage B per-attempt final-context verification", () => {
 
   it("wrong content entry -> Stage B FAIL with digest mismatch", () => {
     const holder = makeHolder();
-    const wrongEntry = {
-      name: "readiness-governance",
-      path: "readiness://projections/p1",
-      content: "different bytes",
-      missing: false,
-    };
+    const wrongEntry = makeGovernedEntry({ content: "different bytes" });
     const stageB = resolveStageBForAttempt({
       runLocalProjectionState: holder,
       hookAdjustedBootstrapFiles: [wrongEntry],

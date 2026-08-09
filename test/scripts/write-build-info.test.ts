@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   normalizeBuildCommit,
   normalizeBuildTimestamp,
+  normalizeBuildTree,
   resolveBuildInfo,
   writeBuildInfo,
 } from "../../scripts/write-build-info.ts";
@@ -29,6 +30,7 @@ describe("write-build-info", () => {
       rootDir,
       env: {
         GIT_COMMIT: "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+        OPENCLAW_BUILD_TREE: "FEDCBA9876543210FEDCBA9876543210FEDCBA98",
         OPENCLAW_BUILD_TIMESTAMP: "2026-07-10T12:34:56Z",
       },
       execFileSync,
@@ -39,13 +41,22 @@ describe("write-build-info", () => {
     expect(JSON.parse(fs.readFileSync(outputPath, "utf8"))).toEqual({
       version: "2026.7.10",
       commit: "abcdef0123456789abcdef0123456789abcdef01",
+      tree: "fedcba9876543210fedcba9876543210fedcba98",
       builtAt: "2026-07-10T12:34:56.000Z",
     });
   });
 
   it("falls back to build-time Git and one current UTC timestamp for local builds", () => {
     const rootDir = createPackage("2026.7.10-beta.1");
-    const execFileSync = vi.fn(() => "1234567890ABCDEF1234567890ABCDEF12345678\n");
+    const execFileSync = vi.fn((command: string, args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "HEAD") {
+        return "1234567890ABCDEF1234567890ABCDEF12345678\n";
+      }
+      if (args[0] === "rev-parse" && args[1] === "HEAD^{tree}") {
+        return "FEDCBA9876543210FEDCBA9876543210FEDCBA98\n";
+      }
+      throw new Error(`unexpected git args: ${args.join(" ")}`);
+    });
 
     expect(
       resolveBuildInfo({
@@ -57,9 +68,15 @@ describe("write-build-info", () => {
     ).toEqual({
       version: "2026.7.10-beta.1",
       commit: "1234567890abcdef1234567890abcdef12345678",
+      tree: "fedcba9876543210fedcba9876543210fedcba98",
       builtAt: "2026-07-10T01:02:03.456Z",
     });
     expect(execFileSync).toHaveBeenCalledWith("git", ["rev-parse", "HEAD"], {
+      cwd: rootDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    expect(execFileSync).toHaveBeenCalledWith("git", ["rev-parse", "HEAD^{tree}"], {
       cwd: rootDir,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -78,6 +95,16 @@ describe("write-build-info", () => {
         },
         now: () => new Date("2026-07-10T01:02:03.000Z"),
       }).commit,
+    ).toBeNull();
+    expect(
+      resolveBuildInfo({
+        rootDir,
+        env: {},
+        execFileSync: () => {
+          throw new Error("git unavailable");
+        },
+        now: () => new Date("2026-07-10T01:02:03.000Z"),
+      }).tree,
     ).toBeNull();
   });
 
@@ -103,7 +130,16 @@ describe("write-build-info", () => {
   it("uses checked-out Git instead of unverified GitHub workflow context", () => {
     const rootDir = createPackage();
     const checkedOutCommit = "b".repeat(40);
-    const execFileSync = vi.fn(() => checkedOutCommit);
+    const checkedOutTree = "c".repeat(40);
+    const execFileSync = vi.fn((command: string, args: string[]) => {
+      if (args[0] === "rev-parse" && args[1] === "HEAD") {
+        return checkedOutCommit;
+      }
+      if (args[0] === "rev-parse" && args[1] === "HEAD^{tree}") {
+        return checkedOutTree;
+      }
+      throw new Error(`unexpected git args: ${args.join(" ")}`);
+    });
 
     expect(
       resolveBuildInfo({
@@ -113,7 +149,7 @@ describe("write-build-info", () => {
         now: () => new Date("2026-07-10T01:02:03.000Z"),
       }).commit,
     ).toBe(checkedOutCommit);
-    expect(execFileSync).toHaveBeenCalledOnce();
+    expect(execFileSync).toHaveBeenCalledTimes(2);
     expect(
       resolveBuildInfo({
         rootDir,
@@ -141,6 +177,15 @@ describe("write-build-info", () => {
     );
     expect(() => normalizeBuildCommit("g".repeat(40))).toThrow(
       "GIT_COMMIT must be a full 40-character Git commit SHA.",
+    );
+  });
+
+  it("rejects abbreviated or malformed explicit trees", () => {
+    expect(() => normalizeBuildTree("abc1234")).toThrow(
+      "OPENCLAW_BUILD_TREE must be a full 40-character Git tree SHA.",
+    );
+    expect(() => normalizeBuildTree("g".repeat(40))).toThrow(
+      "OPENCLAW_BUILD_TREE must be a full 40-character Git tree SHA.",
     );
   });
 

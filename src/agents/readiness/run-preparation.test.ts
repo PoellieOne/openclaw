@@ -10,6 +10,15 @@ import {
 } from "./revalidation.js";
 import { prepareReadinessForRun } from "./run-preparation.js";
 import type { ReadinessPreparationInput } from "./run-preparation.js";
+import { RuntimeProvenanceCode } from "./runtime-provenance.js";
+
+/**
+ * ReadinessPreparationInput["v2"] is an indexed access on an optional
+ * property, so it includes `undefined`; spreading such a value makes every
+ * field optional and `.validation` potentially undefined. The exact
+ * v2-preparation contract is the non-nullable indexed type.
+ */
+type V2PreparationInput = NonNullable<ReadinessPreparationInput["v2"]>;
 
 const NOW = 2000000000000;
 const FUTURE = new Date(NOW + 86400000).toISOString();
@@ -109,7 +118,7 @@ function makeV2Evidence(configDigest: string): string {
   });
 }
 
-function makeV2Input(payloadPath: string, configDigest: string): ReadinessPreparationInput["v2"] {
+function makeV2Input(payloadPath: string, configDigest: string): V2PreparationInput {
   return {
     payloadPath,
     expectedPayloadId: PAYLOAD_ID,
@@ -195,9 +204,9 @@ function writePayload(payload: string): {
 }
 
 function withRealPayload(
-  v2: ReadinessPreparationInput["v2"],
+  v2: V2PreparationInput,
   payload: { sha256: string; bytecount: number },
-): ReadinessPreparationInput["v2"] {
+): V2PreparationInput {
   return { ...v2, expectedSha256: payload.sha256, expectedBytecount: payload.bytecount };
 }
 
@@ -435,6 +444,7 @@ describe("prepareReadinessForRun", () => {
     const digest = computeReadinessConfigDigest(config).sha256;
     const payload = writePayload(makeValidPayloadJson());
     try {
+      const base = withRealPayload(makeV2Input(payload.path, digest), payload);
       const result = prepareReadinessForRun({
         routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
         evidenceJson: makeV2Evidence(digest),
@@ -442,7 +452,7 @@ describe("prepareReadinessForRun", () => {
         projectionVersion: null,
         now: NOW,
         v2: {
-          ...withRealPayload(makeV2Input(payload.path, digest), payload),
+          ...base,
           expectedSha256: "f".repeat(64),
         },
         config,
@@ -462,6 +472,7 @@ describe("prepareReadinessForRun", () => {
     const digest = computeReadinessConfigDigest(config).sha256;
     const payload = writePayload(makeValidPayloadJson());
     try {
+      const base = withRealPayload(makeV2Input(payload.path, digest), payload);
       const result = prepareReadinessForRun({
         routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
         evidenceJson: makeV2Evidence(digest),
@@ -469,7 +480,7 @@ describe("prepareReadinessForRun", () => {
         projectionVersion: null,
         now: NOW,
         v2: {
-          ...withRealPayload(makeV2Input(payload.path, digest), payload),
+          ...base,
           expectedSourceManifestDigest: "a".repeat(64),
         },
         config,
@@ -488,7 +499,7 @@ describe("prepareReadinessForRun", () => {
     const digest = computeReadinessConfigDigest(config).sha256;
     const payload = writePayload(makeValidPayloadJson());
     try {
-      const base = withRealPayload(makeV2Input(payload.path, digest), payload)!;
+      const base = withRealPayload(makeV2Input(payload.path, digest), payload);
       const result = prepareReadinessForRun({
         routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
         evidenceJson: makeV2Evidence(digest),
@@ -520,6 +531,7 @@ describe("prepareReadinessForRun", () => {
     const digest = computeReadinessConfigDigest(config).sha256;
     const payload = writePayload(makeValidPayloadJson());
     try {
+      const base = withRealPayload(makeV2Input(payload.path, digest), payload);
       const result = prepareReadinessForRun({
         routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
         evidenceJson: makeV2Evidence(digest),
@@ -527,9 +539,9 @@ describe("prepareReadinessForRun", () => {
         projectionVersion: null,
         now: NOW,
         v2: {
-          ...withRealPayload(makeV2Input(payload.path, digest), payload),
+          ...base,
           validation: {
-            ...withRealPayload(makeV2Input(payload.path, digest), payload)!.validation,
+            ...base.validation,
             expectedAgentId: "other-agent",
           },
         },
@@ -549,7 +561,7 @@ describe("prepareReadinessForRun", () => {
     const config = makeConfigInput();
     const digest = computeReadinessConfigDigest(config).sha256;
     const payload = writePayload(makeValidPayloadJson());
-    const base = withRealPayload(makeV2Input(payload.path, digest), payload)!;
+    const base = withRealPayload(makeV2Input(payload.path, digest), payload);
     const cases: Array<[string, Partial<typeof base.validation>]> = [
       ["PROVIDER_POLICY_MISMATCH", { expectedProviderPolicy: "anthropic" }],
       ["MODEL_POLICY_MISMATCH", { expectedModelPolicy: "openai/gpt-4o" }],
@@ -586,6 +598,7 @@ describe("prepareReadinessForRun", () => {
     const digest = computeReadinessConfigDigest(config).sha256;
     const payload = writePayload(makeValidPayloadJson());
     try {
+      const base = withRealPayload(makeV2Input(payload.path, digest), payload);
       const result = prepareReadinessForRun({
         routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
         evidenceJson: makeV2Evidence(digest),
@@ -593,9 +606,9 @@ describe("prepareReadinessForRun", () => {
         projectionVersion: null,
         now: NOW,
         v2: {
-          ...withRealPayload(makeV2Input(payload.path, digest), payload),
+          ...base,
           validation: {
-            ...withRealPayload(makeV2Input(payload.path, digest), payload)!.validation,
+            ...base.validation,
             supportedValidatorVersion: "9.9.9",
           },
         },
@@ -715,5 +728,212 @@ describe("prepareReadinessForRun", () => {
   it("I5: cache mismatch -> DIAGNOSTIC_ONLY", () => {
     const result = resolveRevalidationMechanism(RevalidationTrigger.CACHE_MISMATCH);
     expect(result.mechanism).toBe(RevalidationMechanism.DIAGNOSTIC_ONLY);
+  });
+
+  it("I6E: missing runtime provenance -> governed BLOCKED before evaluation", () => {
+    const config = makeConfigInput();
+    const digest = computeReadinessConfigDigest(config).sha256;
+    const payload = writePayload(makeValidPayloadJson());
+    try {
+      const result = prepareReadinessForRun({
+        routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
+        evidenceJson: makeV2Evidence(digest),
+        projectionId: null,
+        projectionVersion: null,
+        now: NOW,
+        v2: withRealPayload(makeV2Input(payload.path, digest), payload),
+        config,
+        runtimeImageTruth: {
+          ok: false,
+          code: RuntimeProvenanceCode.PROVENANCE_MISSING,
+          message: "OPENCLAW_RUNTIME_IMAGE_ID is not set",
+        },
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok && result.governance.governed) {
+        expect(result.governance.state.mayExecute()).toBe(false);
+        expect(result.governance.state.classification).toBe(
+          RuntimeProvenanceCode.PROVENANCE_MISSING,
+        );
+      }
+    } finally {
+      payload.cleanup();
+    }
+  });
+
+  it("I6E: malformed runtime provenance -> governed BLOCKED", () => {
+    const config = makeConfigInput();
+    const digest = computeReadinessConfigDigest(config).sha256;
+    const payload = writePayload(makeValidPayloadJson());
+    try {
+      const result = prepareReadinessForRun({
+        routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
+        evidenceJson: makeV2Evidence(digest),
+        projectionId: null,
+        projectionVersion: null,
+        now: NOW,
+        v2: withRealPayload(makeV2Input(payload.path, digest), payload),
+        config,
+        runtimeImageTruth: {
+          ok: false,
+          code: RuntimeProvenanceCode.PROVENANCE_MALFORMED,
+          message: "OPENCLAW_RUNTIME_IMAGE_ID must match ^sha256:[0-9a-f]{64}$",
+        },
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok && result.governance.governed) {
+        expect(result.governance.state.mayExecute()).toBe(false);
+        expect(result.governance.state.classification).toBe(
+          RuntimeProvenanceCode.PROVENANCE_MALFORMED,
+        );
+      }
+    } finally {
+      payload.cleanup();
+    }
+  });
+
+  it("I6E: resolved runtime provenance reaches later gate logic", () => {
+    const config = makeConfigInput();
+    const digest = computeReadinessConfigDigest(config).sha256;
+    const payload = writePayload(makeValidPayloadJson());
+    try {
+      const result = prepareReadinessForRun({
+        routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
+        evidenceJson: makeV2Evidence(digest),
+        projectionId: null,
+        projectionVersion: null,
+        now: NOW,
+        v2: withRealPayload(makeV2Input(payload.path, digest), payload),
+        config,
+        runtimeImageTruth: {
+          ok: true,
+          truth: {
+            imageId: IMAGE_ID,
+            sourceCommit: SOURCE_COMMIT,
+            sourceTree: SOURCE_TREE,
+          },
+        },
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok && result.governance.governed) {
+        expect(result.governance.state.mayExecute()).toBe(true);
+      }
+    } finally {
+      payload.cleanup();
+    }
+  });
+
+  it("I6E: runtime image mismatch -> RUNTIME_BINDING_MISMATCH BLOCKED", () => {
+    const config = makeConfigInput();
+    const digest = computeReadinessConfigDigest(config).sha256;
+    const payload = writePayload(makeValidPayloadJson());
+    try {
+      const base = makeV2Input(payload.path, digest);
+      const result = prepareReadinessForRun({
+        routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
+        evidenceJson: makeV2Evidence(digest),
+        projectionId: null,
+        projectionVersion: null,
+        now: NOW,
+        v2: withRealPayload(
+          {
+            ...base,
+            validation: {
+              ...base.validation,
+              expectedImageId: "sha256:" + "a".repeat(64),
+            },
+          },
+          payload,
+        ),
+        config,
+        runtimeImageTruth: {
+          ok: true,
+          truth: { imageId: IMAGE_ID, sourceCommit: SOURCE_COMMIT, sourceTree: SOURCE_TREE },
+        },
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok && result.governance.governed) {
+        expect(result.governance.state.mayExecute()).toBe(false);
+        expect(result.governance.state.classification).toBe("RUNTIME_BINDING_MISMATCH");
+      }
+    } finally {
+      payload.cleanup();
+    }
+  });
+
+  it("I6E: runtime commit mismatch -> RUNTIME_BINDING_MISMATCH BLOCKED", () => {
+    const config = makeConfigInput();
+    const digest = computeReadinessConfigDigest(config).sha256;
+    const payload = writePayload(makeValidPayloadJson());
+    try {
+      const base = makeV2Input(payload.path, digest);
+      const result = prepareReadinessForRun({
+        routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
+        evidenceJson: makeV2Evidence(digest),
+        projectionId: null,
+        projectionVersion: null,
+        now: NOW,
+        v2: withRealPayload(
+          {
+            ...base,
+            validation: {
+              ...base.validation,
+              expectedSourceCommit: "a".repeat(40),
+            },
+          },
+          payload,
+        ),
+        config,
+        runtimeImageTruth: {
+          ok: true,
+          truth: { imageId: IMAGE_ID, sourceCommit: SOURCE_COMMIT, sourceTree: SOURCE_TREE },
+        },
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok && result.governance.governed) {
+        expect(result.governance.state.mayExecute()).toBe(false);
+        expect(result.governance.state.classification).toBe("RUNTIME_BINDING_MISMATCH");
+      }
+    } finally {
+      payload.cleanup();
+    }
+  });
+
+  it("I6E: runtime tree mismatch -> RUNTIME_BINDING_MISMATCH BLOCKED", () => {
+    const config = makeConfigInput();
+    const digest = computeReadinessConfigDigest(config).sha256;
+    const payload = writePayload(makeValidPayloadJson());
+    try {
+      const base = makeV2Input(payload.path, digest);
+      const result = prepareReadinessForRun({
+        routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
+        evidenceJson: makeV2Evidence(digest),
+        projectionId: null,
+        projectionVersion: null,
+        now: NOW,
+        v2: withRealPayload(
+          {
+            ...base,
+            validation: {
+              ...base.validation,
+              expectedSourceTree: "a".repeat(40),
+            },
+          },
+          payload,
+        ),
+        config,
+        runtimeImageTruth: {
+          ok: true,
+          truth: { imageId: IMAGE_ID, sourceCommit: SOURCE_COMMIT, sourceTree: SOURCE_TREE },
+        },
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok && result.governance.governed) {
+        expect(result.governance.state.mayExecute()).toBe(false);
+        expect(result.governance.state.classification).toBe("RUNTIME_BINDING_MISMATCH");
+      }
+    } finally {
+      payload.cleanup();
+    }
   });
 });

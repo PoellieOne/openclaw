@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { clearInternalHooks, setInternalHooksEnabled } from "../../hooks/internal-hooks.js";
+import type { WorkspaceBootstrapFile } from "../workspace.js";
 import {
   registerGeneratedProjectionBootstrapHook,
   verifyFinalContextProjection,
@@ -25,16 +26,33 @@ function makeProjection(): GovernedReadinessProjection {
   };
 }
 
-function makeBootstrapFiles(): {
-  name: string;
-  path: string;
-  content?: string;
-  missing: boolean;
-}[] {
+function makeBootstrapFiles(): WorkspaceBootstrapFile[] {
   return [
     { name: "AGENTS.md", path: "/workspace/AGENTS.md", content: "content", missing: false },
     { name: "SOUL.md", path: "/workspace/SOUL.md", missing: true },
   ];
+}
+
+/**
+ * Governed injection entries are represented with the adapter's
+ * GOVERNED_ENTRY_NAME ("readiness-governance"), which is intentionally
+ * wider than the canonical WorkspaceBootstrapFile name union. Production
+ * crosses that boundary by construction (applyReadinessBootstrapAdapter
+ * emits the entry; bootstrap-adapter-wiring assigns it into
+ * WorkspaceBootstrapFile[]); the name-field cast below mirrors exactly that
+ * production boundary cast. `name` is intentionally absent from the
+ * override type so the spread cannot widen the literal back to `string`.
+ */
+function makeGovernedEntry(
+  overrides?: Partial<{ path: string; content: string; missing: boolean }>,
+): WorkspaceBootstrapFile {
+  return {
+    name: "readiness-governance" as WorkspaceBootstrapFile["name"],
+    path: "readiness://projections/a",
+    content: "content",
+    missing: false,
+    ...overrides,
+  };
 }
 
 describe("I4 two-stage injection assertions", () => {
@@ -85,18 +103,8 @@ describe("I4 two-stage injection assertions", () => {
       {
         ok: true,
         files: [
-          {
-            name: "readiness-governance",
-            path: "readiness://projections/a",
-            content: "a",
-            missing: false,
-          },
-          {
-            name: "readiness-governance",
-            path: "readiness://projections/b",
-            content: "b",
-            missing: false,
-          },
+          makeGovernedEntry({ path: "readiness://projections/a", content: "a" }),
+          makeGovernedEntry({ path: "readiness://projections/b", content: "b" }),
         ],
       },
       DIGEST,
@@ -109,14 +117,7 @@ describe("I4 two-stage injection assertions", () => {
     const result = buildInjectionAssertion(
       {
         ok: true,
-        files: [
-          {
-            name: "readiness-governance",
-            path: "readiness://projections/a",
-            content: "different",
-            missing: false,
-          },
-        ],
+        files: [makeGovernedEntry({ content: "different" })],
       },
       DIGEST,
     );
@@ -130,14 +131,7 @@ describe("I4 two-stage injection assertions", () => {
     const result = buildInjectionAssertion(
       {
         ok: true,
-        files: [
-          {
-            name: "readiness-governance",
-            path: "readiness://projections/a",
-            content,
-            missing: false,
-          },
-        ],
+        files: [makeGovernedEntry({ content })],
       },
       digest,
     );
@@ -166,14 +160,7 @@ describe("I4 two-stage injection assertions", () => {
     const result = applyReadinessBootstrapAdapter({
       governance: makeGoverned(),
       projection: makeProjection(),
-      bootstrapFiles: [
-        {
-          name: "readiness-governance",
-          path: "readiness://projections/old",
-          content: "old",
-          missing: false,
-        },
-      ],
+      bootstrapFiles: [makeGovernedEntry({ path: "readiness://projections/old", content: "old" })],
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe("PROJECTION_INJECTION_CONTENT_MISMATCH");
@@ -188,30 +175,13 @@ describe("I4 two-stage injection assertions", () => {
   it("final-context verification: exact entry with matching digest -> ok", () => {
     const content = "governed semantic projection content";
     const digest = createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
-    const result = verifyFinalContextProjection(
-      [
-        {
-          name: "readiness-governance",
-          path: "readiness://projections/a",
-          content,
-          missing: false,
-        },
-      ],
-      digest,
-    );
+    const result = verifyFinalContextProjection([makeGovernedEntry({ content })], digest);
     expect(result.ok).toBe(true);
   });
 
   it("final-context verification: digest mismatch -> BLOCKED", () => {
     const result = verifyFinalContextProjection(
-      [
-        {
-          name: "readiness-governance",
-          path: "readiness://projections/a",
-          content: "different",
-          missing: false,
-        },
-      ],
+      [makeGovernedEntry({ content: "different" })],
       DIGEST,
     );
     expect(result.ok).toBe(false);

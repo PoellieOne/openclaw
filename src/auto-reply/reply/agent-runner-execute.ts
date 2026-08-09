@@ -13,6 +13,7 @@ import {
   assembleGovernedRunLocalHolder,
 } from "../../agents/readiness/production-v2-preparation.js";
 import { prepareReadinessForRun } from "../../agents/readiness/run-preparation.js";
+import { resolveRuntimeImageTruth } from "../../agents/readiness/runtime-provenance.js";
 import type { ReadinessRouteClassification } from "../../agents/readiness/types.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
@@ -313,6 +314,7 @@ export async function executePreparedReplyAgentRun(
   await turnAdoptionLifecycle?.onAdopted();
   const routeClassification: ReadinessRouteClassification = "REAL_MODEL_EXECUTION_ROUTE";
   const envelopeResult = loadCanonicalReadinessEnvelopeV2();
+  const runtimeImageTruth = resolveRuntimeImageTruth();
   let v2PreparationInput: Parameters<typeof prepareReadinessForRun>[0]["v2"] | undefined;
   let effectiveExecutionBackend: Parameters<
     typeof prepareReadinessForRun
@@ -334,17 +336,19 @@ export async function executePreparedReplyAgentRun(
     });
     effectiveExecutionBackend = configSource.effectiveExecutionBackend;
     const expectedConfigDigest = computeGovernedExpectedConfigDigest(configSource);
-    v2PreparationInput = buildGovernedV2PreparationInput({
-      envelope,
-      agentId: followupRun.run.agentId,
-      expectedImageId: null,
-      expectedSourceCommit: null,
-      expectedSourceTree: null,
-      expectedConfigDigest,
-      supportedValidatorId: SUPPORTED_VALIDATOR_ID,
-      supportedValidatorVersion: SUPPORTED_VALIDATOR_VERSION,
-      now: Date.now(),
-    });
+    if (runtimeImageTruth.ok) {
+      v2PreparationInput = buildGovernedV2PreparationInput({
+        envelope,
+        agentId: followupRun.run.agentId,
+        expectedImageId: runtimeImageTruth.truth.imageId,
+        expectedSourceCommit: runtimeImageTruth.truth.sourceCommit,
+        expectedSourceTree: runtimeImageTruth.truth.sourceTree,
+        expectedConfigDigest,
+        supportedValidatorId: SUPPORTED_VALIDATOR_ID,
+        supportedValidatorVersion: SUPPORTED_VALIDATOR_VERSION,
+        now: Date.now(),
+      });
+    }
   }
   let evidenceJson: string | null = null;
   let projectionId: string | null = null;
@@ -363,6 +367,7 @@ export async function executePreparedReplyAgentRun(
     projectionVersion,
     now: Date.now(),
     ...(v2PreparationInput ? { v2: v2PreparationInput } : {}),
+    ...(runtimeImageTruth.ok ? {} : { runtimeImageTruth }),
     ...(effectiveExecutionBackend !== undefined ? { effectiveExecutionBackend } : {}),
   });
   if (!preparationResult.ok) {

@@ -11,6 +11,7 @@ import { resolveReadinessPolicy } from "./policy-resolver.js";
 import { RevalidationTrigger } from "./revalidation.js";
 import type { RevalidationMechanism } from "./revalidation.js";
 import { resolveRevalidationMechanism } from "./revalidation.js";
+import type { RuntimeImageTruthResult } from "./runtime-provenance.js";
 import { ReadinessRunState } from "./state.js";
 import type {
   ReadinessGovernance,
@@ -38,6 +39,8 @@ export type ReadinessPreparationInput = {
     expectedSourceManifestDigest: string;
     validation: ReadinessV2EvaluationInput;
   };
+  /** Resolved runtime image/source provenance for the governed production route. */
+  runtimeImageTruth?: RuntimeImageTruthResult;
   config?: ReadinessConfigProjectionInput;
   /** Effective execution backend resolved from the same runtime truth as useCliExecution. */
   effectiveExecutionBackend?: import("./execution-backend.js").ExecutionBackendPolicyEvaluation["effectiveBackend"];
@@ -162,6 +165,25 @@ export function prepareReadinessForRun(
       code: ReadinessCode.POLICY_UNRESOLVED,
       message: "unknown policy disposition",
     };
+  }
+
+  // Runtime-truth gate: the governed production route requires exact resolved
+  // image/source provenance. Missing/malformed/untrusted/unsupported values
+  // fail closed before any envelope evaluation or provider dispatch.
+  if (input.runtimeImageTruth !== undefined && !input.runtimeImageTruth.ok) {
+    const state = ReadinessRunState.create({
+      policy,
+      evaluation: {
+        decision: "BLOCKED",
+        outcome: "BLOCKED",
+        classification: input.runtimeImageTruth.code,
+        diagnosticRef: "runtime-provenance-unresolved",
+        evaluatedAt: input.now,
+        policy,
+      },
+      now: input.now,
+    });
+    return { ok: true, governance: { governed: true, state } };
   }
 
   let preparationAssertion: ProjectionPreparationAssertion | undefined;

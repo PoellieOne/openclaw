@@ -177,16 +177,23 @@ describe("contracts-v2", () => {
   });
 
   it("supports the two-stage injection assertion data contracts", () => {
+    const payloadContent = JSON.stringify({
+      schema_version: PAYLOAD_SCHEMA_VERSION,
+      payload_id: "canonical-production-sophia-semantic-runtime-projection-v1",
+      payload_version: "1.0.0",
+    });
     const preparation: ProjectionPreparationAssertion = {
       ok: true,
       payloadId: "canonical-production-sophia-semantic-runtime-projection-v1",
       payloadVersion: "1.0.0",
       expectedProjectionDigest: "c".repeat(64),
       expectedBytecount: 1024,
+      payloadContent,
       code: null,
     };
     expect(preparation.ok).toBe(true);
     expect(preparation.expectedProjectionDigest).toBe("c".repeat(64));
+    expect(preparation.payloadContent).toBe(payloadContent);
     const injection: ProjectionInjectionAssertion = {
       ok: true,
       entryCount: 1,

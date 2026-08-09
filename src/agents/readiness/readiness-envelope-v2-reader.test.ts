@@ -1,9 +1,22 @@
 import { createHash } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import { parseReadinessEnvelopeV2 } from "./envelope-parser.js";
+import type { V2CanonicalReadinessEnvelope } from "./envelope-parser.js";
 
 const NOW = 2000000000000;
 const FUTURE = new Date(NOW + 86400000).toISOString();
+
+/**
+ * The V2 envelope union discriminates on evidence.decision, which is nested
+ * below the top-level union member; TypeScript does not narrow union members
+ * through nested discriminant property access. This guard follows the
+ * repository's established pattern for READY-member access.
+ */
+function isReadyV2Envelope(
+  envelope: V2CanonicalReadinessEnvelope,
+): envelope is import("./envelope-parser.js").ReadyV2CanonicalReadinessEnvelope {
+  return envelope.evidence.decision === "READY";
+}
 
 const IMAGE_ID = "sha256:d517a31d3167013713d1fa8f632b504bf536e1282eed21bd36b88c2941b93a7a";
 const SOURCE_COMMIT = "37fd1774155e0d7a0eeef9ea7acea89b135cac82";
@@ -72,10 +85,13 @@ describe("parseReadinessEnvelopeV2", () => {
     const result = parseReadinessEnvelopeV2(serialize(makeReadyV2Envelope()));
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.envelope.envelopeVersion).toBe("readiness-envelope.v2");
-      expect(result.envelope.evidence.decision).toBe("READY");
-      expect(result.envelope.generatedPayload.payloadId).toBe(PAYLOAD_ID);
-      expect(result.envelope.credentialRoute.credentialRouteStatus).toBe("AVAILABLE_VERIFIED");
+      const envelope = result.envelope;
+      expect(envelope.envelopeVersion).toBe("readiness-envelope.v2");
+      expect(envelope.evidence.decision).toBe("READY");
+      if (isReadyV2Envelope(envelope)) {
+        expect(envelope.generatedPayload.payloadId).toBe(PAYLOAD_ID);
+        expect(envelope.credentialRoute.credentialRouteStatus).toBe("AVAILABLE_VERIFIED");
+      }
     }
   });
 

@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const defaultRootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FULL_GIT_COMMIT_RE = /^[0-9a-f]{40}$/iu;
+const FULL_GIT_TREE_RE = /^[0-9a-f]{40}$/iu;
 const UTC_ISO_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u;
 
 type ExecFileSync = (
@@ -21,6 +22,7 @@ type ExecFileSync = (
 export type BuildInfo = {
   version: string | null;
   commit: string | null;
+  tree: string | null;
   builtAt: string;
 };
 
@@ -49,6 +51,14 @@ export function normalizeBuildCommit(raw: string, source = "GIT_COMMIT"): string
     throw new Error(`${source} must be a full 40-character Git commit SHA.`);
   }
   return commit;
+}
+
+export function normalizeBuildTree(raw: string, source = "OPENCLAW_BUILD_TREE"): string {
+  const tree = raw.trim().toLowerCase();
+  if (!FULL_GIT_TREE_RE.test(tree)) {
+    throw new Error(`${source} must be a full 40-character Git tree SHA.`);
+  }
+  return tree;
 }
 
 export function normalizeBuildTimestamp(raw: string, source = "OPENCLAW_BUILD_TIMESTAMP"): string {
@@ -86,12 +96,27 @@ function resolveGitCommit(rootDir: string, execFileSyncImpl: ExecFileSync): stri
   return normalizeBuildCommit(raw, "git rev-parse HEAD");
 }
 
+function resolveGitTree(rootDir: string, execFileSyncImpl: ExecFileSync): string | null {
+  let raw: string;
+  try {
+    raw = execFileSyncImpl("git", ["rev-parse", "HEAD^{tree}"], {
+      cwd: rootDir,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).toString();
+  } catch {
+    return null;
+  }
+  return normalizeBuildTree(raw, "git rev-parse HEAD^{tree}");
+}
+
 export function resolveBuildInfo(options: ResolveBuildInfoOptions = {}): BuildInfo {
   const rootDir = options.rootDir ?? defaultRootDir;
   const env = options.env ?? process.env;
   const explicitCommit = env.GIT_COMMIT?.trim();
   const explicitSha = env.GIT_SHA?.trim();
   const githubSha = env.GITHUB_SHA?.trim();
+  const explicitTree = env.OPENCLAW_BUILD_TREE?.trim();
   const explicitTimestamp = env.OPENCLAW_BUILD_TIMESTAMP?.trim();
   const checkedOutCommit =
     explicitCommit || explicitSha
@@ -103,6 +128,13 @@ export function resolveBuildInfo(options: ResolveBuildInfoOptions = {}): BuildIn
     : explicitSha
       ? normalizeBuildCommit(explicitSha, "GIT_SHA")
       : (checkedOutCommit ?? (githubSha ? normalizeBuildCommit(githubSha, "GITHUB_SHA") : null));
+  // The tree is resolved from the same checked-out source as the commit so the
+  // immutable build-info binds both commit and tree to one exact source state.
+  const tree = explicitTree
+    ? normalizeBuildTree(explicitTree)
+    : checkedOutCommit !== null
+      ? resolveGitTree(rootDir, options.execFileSync ?? execFileSync)
+      : null;
   const builtAt = explicitTimestamp
     ? normalizeBuildTimestamp(explicitTimestamp)
     : (options.now ?? (() => new Date()))().toISOString();
@@ -110,6 +142,7 @@ export function resolveBuildInfo(options: ResolveBuildInfoOptions = {}): BuildIn
   return {
     version: readPackageVersion(rootDir),
     commit,
+    tree,
     builtAt,
   };
 }

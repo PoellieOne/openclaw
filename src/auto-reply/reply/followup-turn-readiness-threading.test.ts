@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   reset: vi.fn(),
   loadCanonicalReadinessEnvelopeV2: vi.fn(),
   prepareReadinessForRun: vi.fn(),
+  resolveRuntimeImageTruth: vi.fn(),
 }));
 
 vi.mock("./agent-runner-execution.js", () => ({
@@ -31,6 +32,10 @@ vi.mock("../../agents/readiness/canonical-envelope-reader.js", () => ({
 
 vi.mock("../../agents/readiness/run-preparation.js", () => ({
   prepareReadinessForRun: (...args: unknown[]) => state.prepareReadinessForRun(...args),
+}));
+
+vi.mock("../../agents/readiness/runtime-provenance.js", () => ({
+  resolveRuntimeImageTruth: (...args: unknown[]) => state.resolveRuntimeImageTruth(...args),
 }));
 
 const { executeFollowupTurn } = await import("./followup-turn-execution.js");
@@ -207,6 +212,14 @@ beforeEach(() => {
   });
   state.loadCanonicalReadinessEnvelopeV2.mockReturnValue(makeReadyEnvelope());
   state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedReady() });
+  state.resolveRuntimeImageTruth.mockReturnValue({
+    ok: true,
+    truth: {
+      imageId: "sha256:c9515b90811c75128d97fff1bfde9f6075201d95f9f6d759f43878c2fc81229c",
+      sourceCommit: "092549f011e2bfcbfe6ac3af4bb8423ecef7422c",
+      sourceTree: "c17d48bf3368d5726beb1ff5656b00a9c3ce7a08",
+    },
+  });
 });
 
 describe("executeFollowupTurn: upstream readiness threading", () => {
@@ -589,6 +602,92 @@ describe("executeFollowupTurn: upstream readiness threading", () => {
       expect(result.execution.outcome.blockedResult.isBlocked).toBe(true);
       expect(result.execution.outcome.resolved.provider).toBe("anthropic");
       expect(result.execution.outcome.resolved.model).toBe("claude");
+    }
+  });
+
+  it("I6E: resolved runtime provenance is threaded into v2 preparation", async () => {
+    const turn = createTurn();
+    const typing = createTypingController();
+    await executeFollowupTurn({
+      turn,
+      defaults: { typing, typingMode: "instant", defaultModel: "claude", opts: {} },
+      onExecutionStarted: vi.fn(),
+      onToolResult: vi.fn(async () => {}),
+      onCompactionNoticePayload: vi.fn(async () => {}),
+    });
+    const call = state.prepareReadinessForRun.mock.calls[0]?.[0] as {
+      v2?: {
+        validation?: {
+          expectedImageId?: string;
+          expectedSourceCommit?: string;
+          expectedSourceTree?: string;
+        };
+      };
+    };
+    expect(call.v2?.validation?.expectedImageId).toBe(
+      "sha256:c9515b90811c75128d97fff1bfde9f6075201d95f9f6d759f43878c2fc81229c",
+    );
+    expect(call.v2?.validation?.expectedSourceCommit).toBe(
+      "092549f011e2bfcbfe6ac3af4bb8423ecef7422c",
+    );
+    expect(call.v2?.validation?.expectedSourceTree).toBe(
+      "c17d48bf3368d5726beb1ff5656b00a9c3ce7a08",
+    );
+  });
+
+  it("I6E: missing runtime provenance yields governed BLOCKED with zero dispatch", async () => {
+    state.resolveRuntimeImageTruth.mockReturnValue({
+      ok: false,
+      code: "PROVENANCE_MISSING",
+      message: "OPENCLAW_RUNTIME_IMAGE_ID is not set",
+    });
+    state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedBlocked() });
+    const turn = createTurn();
+    const typing = createTypingController();
+    await executeFollowupTurn({
+      turn,
+      defaults: { typing, typingMode: "instant", defaultModel: "claude", opts: {} },
+      onExecutionStarted: vi.fn(),
+      onToolResult: vi.fn(async () => {}),
+      onCompactionNoticePayload: vi.fn(async () => {}),
+    });
+    const call = state.prepareReadinessForRun.mock.calls[0]?.[0] as {
+      runtimeImageTruth?: { ok: boolean; code: string };
+    };
+    expect(call.runtimeImageTruth?.ok).toBe(false);
+    expect(call.runtimeImageTruth?.code).toBe("PROVENANCE_MISSING");
+    const execCall = state.execute.mock.calls[0]?.[0] as AgentTurnParams;
+    expect(execCall.followupRun.run.readinessGovernance?.governed).toBe(true);
+    if (execCall.followupRun.run.readinessGovernance?.governed) {
+      expect(execCall.followupRun.run.readinessGovernance.state.mayExecute()).toBe(false);
+    }
+  });
+
+  it("I6E: malformed runtime provenance yields governed BLOCKED with zero dispatch", async () => {
+    state.resolveRuntimeImageTruth.mockReturnValue({
+      ok: false,
+      code: "PROVENANCE_MALFORMED",
+      message: "OPENCLAW_RUNTIME_IMAGE_ID must match ^sha256:[0-9a-f]{64}$",
+    });
+    state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedBlocked() });
+    const turn = createTurn();
+    const typing = createTypingController();
+    await executeFollowupTurn({
+      turn,
+      defaults: { typing, typingMode: "instant", defaultModel: "claude", opts: {} },
+      onExecutionStarted: vi.fn(),
+      onToolResult: vi.fn(async () => {}),
+      onCompactionNoticePayload: vi.fn(async () => {}),
+    });
+    const call = state.prepareReadinessForRun.mock.calls[0]?.[0] as {
+      runtimeImageTruth?: { ok: boolean; code: string };
+    };
+    expect(call.runtimeImageTruth?.ok).toBe(false);
+    expect(call.runtimeImageTruth?.code).toBe("PROVENANCE_MALFORMED");
+    const execCall = state.execute.mock.calls[0]?.[0] as AgentTurnParams;
+    expect(execCall.followupRun.run.readinessGovernance?.governed).toBe(true);
+    if (execCall.followupRun.run.readinessGovernance?.governed) {
+      expect(execCall.followupRun.run.readinessGovernance.state.mayExecute()).toBe(false);
     }
   });
 });
