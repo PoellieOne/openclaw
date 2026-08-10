@@ -898,13 +898,13 @@ export type V2CanonicalReadinessEnvelopeLoadResult =
   | {
       ok: true;
       envelope: ReadyV2CanonicalReadinessEnvelope;
-      evidenceJson: string;
+      envelopeJson: string;
       projection: GovernedReadinessProjection;
     }
   | {
       ok: true;
       envelope: BlockedV2CanonicalReadinessEnvelope;
-      evidenceJson: string;
+      envelopeJson: string;
       projection?: never;
     }
   | {
@@ -1586,7 +1586,11 @@ export function parseReadinessEnvelopeV2(input: string): V2CanonicalReadinessEnv
   const evidenceResult = validateV2EvidenceStructure(evidence);
   if (!evidenceResult.ok) return evidenceResult;
 
-  const evidenceJson = JSON.stringify(evidence);
+  // The downstream readiness.v2 validator validates the complete serialized
+  // envelope (top-level envelope_version/published_at/published_by/evidence),
+  // not the extracted evidence sub-object. Passing the full envelope here
+  // keeps the loader -> evaluator -> validator contract exact.
+  const envelopeJson = JSON.stringify(obj);
 
   if (evidence.decision === "BLOCKED") {
     if (obj.projection !== undefined || obj.binding !== undefined) {
@@ -1612,7 +1616,7 @@ export function parseReadinessEnvelopeV2(input: string): V2CanonicalReadinessEnv
           : undefined,
       },
     };
-    return { ok: true, envelope: blockedEnvelope, evidenceJson };
+    return { ok: true, envelope: blockedEnvelope, envelopeJson };
   }
 
   const readyEvidenceResult = validateV2ReadyEvidence(evidence);
@@ -1717,7 +1721,7 @@ export function parseReadinessEnvelopeV2(input: string): V2CanonicalReadinessEnv
   return {
     ok: true,
     envelope: readyEnvelope,
-    evidenceJson,
+    envelopeJson,
     projection: projectionResult.projection,
   };
 }

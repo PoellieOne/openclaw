@@ -82,7 +82,7 @@ function makeReadyEnvelope(): V2CanonicalReadinessEnvelopeLoadResult {
       revalidation: { revalidationRequired: false, reason: null, validatorVersion: "1.0.0" },
       provenance: { generatorId: "test-generator", generatorVersion: "1.0.0" },
     },
-    evidenceJson: JSON.stringify({ decision: "READY" }),
+    envelopeJson: JSON.stringify({ decision: "READY" }),
     projection: { id: "proj-v1", version: "1.0.0", content: "test content" },
   };
 }
@@ -352,7 +352,7 @@ describe("executePreparedReplyAgentRun: direct route readiness threading", () =>
         publishedBy: "test",
         evidence: { contract_version: "readiness.v2", decision: "BLOCKED" },
       },
-      evidenceJson: JSON.stringify({ decision: "BLOCKED" }),
+      envelopeJson: JSON.stringify({ decision: "BLOCKED" }),
     });
     state.prepareReadinessForRun.mockReturnValue({ ok: true, governance: makeGovernedBlocked() });
     await executePreparedReplyAgentRun(createMinimalContext());

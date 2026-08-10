@@ -323,7 +323,7 @@ export async function executeFollowupTurn(params: {
     let projectionId: string | null = null;
     let projectionVersion: string | null = null;
     if (envelopeResult.ok) {
-      evidenceJson = envelopeResult.evidenceJson;
+      evidenceJson = envelopeResult.envelopeJson;
       if (envelopeResult.projection) {
         projectionId = envelopeResult.projection.id;
         projectionVersion = envelopeResult.projection.version;
