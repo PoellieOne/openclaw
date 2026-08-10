@@ -32,6 +32,13 @@ import { emitAgentRunStatusEvent } from "../../infra/agent-run-status-events.js"
 import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { logSessionTurnCreated } from "../../logging/diagnostic.js";
+import {
+  bindSmoke003RunId,
+  emitSmoke003Exit,
+  emitSmoke003Phase,
+  isSmoke003Armed,
+  smoke003ErrorClassName,
+} from "../../logging/smoke003-observability.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import type { ReplyPayload } from "../types.js";
 import {
@@ -512,6 +519,8 @@ export async function executeAgentTurn(params: AgentTurnParams): Promise<AgentTu
   const runId = params.opts?.runId ?? crypto.randomUUID();
   const executionParams =
     params.opts?.runId === runId ? params : { ...params, opts: { ...params.opts, runId } };
+  bindSmoke003RunId(runId);
+  emitSmoke003Phase(runId, "PRE_PROVIDER_PHASE_execute_agent_turn_ENTER");
   // Gateway writes require exact view identity against this bare session runtime;
   // requester-scoped and combined runtimes cannot cross the App view boundary.
   const runtime = executionParams.isHeartbeat
@@ -617,6 +626,23 @@ export async function executeAgentTurn(params: AgentTurnParams): Promise<AgentTu
       },
     };
   } catch (error) {
+    if (isSmoke003Armed(runId)) {
+      const isAbort =
+        isReplyOperationRestartAbort(executionParams.replyOperation) ||
+        isReplyOperationUserAbort(executionParams.replyOperation) ||
+        isAgentRunRestartAbortReason(error) ||
+        (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"));
+      if (isAbort) {
+        emitSmoke003Exit(runId, "PRE_PROVIDER_ABORT", {
+          errorClass: smoke003ErrorClassName(error),
+          errorCode: error instanceof Error ? error.name : undefined,
+        });
+      } else {
+        emitSmoke003Exit(runId, "PRE_PROVIDER_EXCEPTION", {
+          errorClass: smoke003ErrorClassName(error),
+        });
+      }
+    }
     if (
       isReplyOperationRestartAbort(executionParams.replyOperation) ||
       isAgentRunRestartAbortReason(error)

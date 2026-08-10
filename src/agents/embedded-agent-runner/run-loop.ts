@@ -8,6 +8,11 @@ import {
 import { buildContextEngineRuntimeSettings } from "../../context-engine/runtime-settings.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import {
+  emitSmoke003Exit,
+  isSmoke003Armed,
+  smoke003ErrorClassName,
+} from "../../logging/smoke003-observability.js";
+import {
   retireSessionMcpRuntime,
   retireSessionMcpRuntimeForSessionKey,
 } from "../agent-bundle-mcp-tools.js";
@@ -625,6 +630,25 @@ export async function runPreparedEmbeddedLoop(
       }
       return terminalResolution.result;
     }
+  } catch (error) {
+    if (isSmoke003Armed(params.runId)) {
+      const isAbort =
+        error instanceof Error &&
+        (error.name === "AbortError" ||
+          error.name === "AgentRunRestartAbortError" ||
+          error.name === "TimeoutError");
+      if (isAbort) {
+        emitSmoke003Exit(params.runId, "PRE_PROVIDER_ABORT", {
+          errorClass: smoke003ErrorClassName(error),
+          errorCode: error instanceof Error ? error.name : undefined,
+        });
+      } else {
+        emitSmoke003Exit(params.runId, "PRE_PROVIDER_EXCEPTION", {
+          errorClass: smoke003ErrorClassName(error),
+        });
+      }
+    }
+    throw error;
   } finally {
     if (params.isFinalFallbackAttempt !== false) {
       await maybeEmitFastModeAutoResetBestEffort();

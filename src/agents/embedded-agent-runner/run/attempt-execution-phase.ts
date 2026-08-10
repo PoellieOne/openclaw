@@ -1,3 +1,4 @@
+import { emitSmoke003Phase } from "../../../logging/smoke003-observability.js";
 /** Prepares the guarded stream runtime before prompt execution and settlement. */
 import {
   mergeAgentRunAttemptTerminal,
@@ -132,6 +133,10 @@ export async function runEmbeddedAttemptExecutionPhase(
       },
       setToolSearchCatalogExecutor: input.lifecycle.setToolSearchCatalogExecutor,
     },
+  });
+  emitSmoke003Phase(attempt.runId, "PROVIDER_DISPATCH_ENTER", {
+    provider: attempt.provider,
+    model: attempt.modelId,
   });
   return await runEmbeddedAttemptSettledPhase({
     ...input,

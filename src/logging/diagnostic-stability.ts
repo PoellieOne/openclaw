@@ -348,6 +348,14 @@ function sanitizeDiagnosticEvent(event: DiagnosticEventPayload): DiagnosticStabi
       record.model = event.model;
       record.toolName = event.tool;
       break;
+    case "smoke003.phase":
+    case "smoke003.exit":
+      record.phase = event.phase;
+      record.source = event.writer;
+      record.outcome = event.branch;
+      record.provider = event.provider;
+      record.model = event.model;
+      break;
     case "context.assembled":
       record.channel = event.channel;
       record.provider = event.provider;

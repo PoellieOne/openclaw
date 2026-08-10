@@ -12,6 +12,7 @@ import { loadSessionEntryReadOnly } from "../../config/sessions/session-accessor
 import { parseSessionThreadInfoFast } from "../../config/sessions/thread-info.js";
 import type { TypingMode } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
+import { emitSmoke003Phase, getSmoke003ArmedRunId } from "../../logging/smoke003-observability.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { sessionDeliveryChannel } from "../../utils/delivery-context.shared.js";
@@ -456,6 +457,10 @@ export async function cleanupReplyAgentRun(context: {
     typing,
   } = context;
 
+  const smoke003RunId = getSmoke003ArmedRunId();
+  if (smoke003RunId) {
+    emitSmoke003Phase(smoke003RunId, "CLAIM_CONTROLLER_FINALLY_ENTER");
+  }
   try {
     await clearRestartRecoveryDeliveryClaim();
   } catch (error) {

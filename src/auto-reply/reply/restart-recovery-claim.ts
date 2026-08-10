@@ -13,6 +13,7 @@ import type {
   SessionTranscriptTurnLifecyclePatch,
 } from "../../config/sessions/session-transcript-turn-lifecycle.types.js";
 import type { SessionEntry } from "../../config/sessions/types.js";
+import { emitSmoke003Phase, getSmoke003ArmedRunId } from "../../logging/smoke003-observability.js";
 import type {
   UserTurnTranscriptRecorder,
   UserTurnTranscriptTarget,
@@ -301,6 +302,14 @@ export function createReplyRestartRecoveryClaimController(params: {
       recoveryRunId = admissionRunId;
       recoverySourceRunId = normalizeOptionalString(adopted.restartRecoveryDeliverySourceRunId);
       tracked = true;
+      const smoke003RunId = getSmoke003ArmedRunId();
+      if (smoke003RunId) {
+        emitSmoke003Phase(smoke003RunId, "RESTART_RECOVERY_CLAIM_CONTROLLER_ADOPTED", {
+          claimAdopted: true,
+          branch: "transcript-only",
+          terminalRunId: recoverySourceRunId,
+        });
+      }
       return "admitted";
     }
 
@@ -377,6 +386,14 @@ export function createReplyRestartRecoveryClaimController(params: {
     params.setEntry(persisted);
     recoverySourceRunId = normalizeOptionalString(persisted.restartRecoveryDeliverySourceRunId);
     tracked = persisted.restartRecoveryDeliveryRunId === recoveryRunId;
+    const smoke003RunId = getSmoke003ArmedRunId();
+    if (smoke003RunId) {
+      emitSmoke003Phase(smoke003RunId, "RESTART_RECOVERY_CLAIM_CONTROLLER_ADOPTED", {
+        claimAdopted: tracked,
+        branch: "delivery-context",
+        terminalRunId: recoverySourceRunId,
+      });
+    }
     return "admitted";
   };
 
@@ -574,6 +591,19 @@ export function createReplyRestartRecoveryClaimController(params: {
     );
     if (persisted) {
       params.setEntry(persisted);
+      const smoke003RunId = getSmoke003ArmedRunId();
+      if (smoke003RunId) {
+        emitSmoke003Phase(smoke003RunId, "CLAIM_CONTROLLER_CLEANUP_WRITER", {
+          writer: "claimController",
+          terminalRunId: recoverySourceRunId,
+          branch:
+            current.restartRecoveryDeliveryReceiptState === "terminal-pending"
+              ? "terminal-pending"
+              : current.restartRecoveryBeforeAgentReplyState === "handled-silent"
+                ? "handled-silent"
+                : "plain",
+        });
+      }
     }
   };
 

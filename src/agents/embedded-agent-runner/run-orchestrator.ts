@@ -11,6 +11,7 @@ import {
   getAgentEventLifecycleGeneration,
   withAgentRunLifecycleGeneration,
 } from "../../infra/agent-events.js";
+import { emitSmoke003Phase } from "../../logging/smoke003-observability.js";
 import {
   buildHandledBeforeAgentReplyPayloads,
   runBeforeAgentReplyForTurn,
@@ -86,6 +87,7 @@ export function runEmbeddedAgent(
   const lifecycleGeneration =
     internalParamsInput.lifecycleGeneration ??
     captureAgentRunLifecycleGeneration(internalParamsInput.runId);
+  emitSmoke003Phase(internalParamsInput.runId, "PRE_PROVIDER_PHASE_embedded_runner_ENTER");
   return withAgentRunLifecycleGeneration(lifecycleGeneration, () =>
     runEmbeddedAgentInternal({
       ...internalParamsInput,

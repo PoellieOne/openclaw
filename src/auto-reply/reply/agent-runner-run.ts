@@ -11,6 +11,12 @@ import { loadSessionEntry, updateSessionEntry } from "../../config/sessions/sess
 import { logVerbose } from "../../globals.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import {
+  armSmoke003FromReplyRunner,
+  completeSmoke003Diagnostics,
+  emitSmoke003RunError,
+  getSmoke003ArmedRunId,
+} from "../../logging/smoke003-observability.js";
+import {
   buildHandledBeforeAgentReplyPayloads,
   runBeforeAgentReplyForTurn,
   withBeforeAgentReplyObserver,
@@ -111,6 +117,16 @@ export async function runReplyAgent(
 
   const isHeartbeat = opts?.isHeartbeat === true;
   const replyOperationRunState = resolveReplyOperationRunState(opts);
+  armSmoke003FromReplyRunner({
+    isHeartbeat,
+    commandBody,
+    config: followupRun.run.config,
+    runId: opts?.runId,
+    sessionId: followupRun.run.sessionId,
+    sessionKey: sessionKey ?? followupRun.run.sessionKey,
+    storePath,
+    lifecycleRevision: activeSessionEntry?.lifecycleRevision,
+  });
   const traceAttributes = {
     provider: followupRun.run.provider,
     hasSessionKey: Boolean(sessionKey ?? followupRun.run.sessionKey),
@@ -684,6 +700,7 @@ export async function runReplyAgent(
       typingSignals,
     });
   } catch (error) {
+    emitSmoke003RunError(getSmoke003ArmedRunId(), error, false);
     return await handleReplyAgentRunError(error, {
       cfg,
       isRestartRecoveryArmed,
@@ -704,5 +721,6 @@ export async function runReplyAgent(
       shouldDrainQueuedFollowupsAfterClear,
       typing,
     });
+    completeSmoke003Diagnostics(getSmoke003ArmedRunId());
   }
 }

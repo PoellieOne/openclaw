@@ -389,6 +389,45 @@ type DiagnosticRunExecutionPhaseEvent = DiagnosticBaseEvent & {
   firstModelCallStarted?: boolean;
 };
 
+/**
+ * Gated pre-provider run-path observability for one governed SMOKE-003 run.
+ * Emitted only for the exact armed runId; payloads are sanitized and carry
+ * no credentials, tokens, or prompt bodies.
+ */
+type DiagnosticSmoke003PhaseEvent = DiagnosticBaseEvent & {
+  type: "smoke003.phase";
+  runId: string;
+  sessionId?: string;
+  sessionKey?: string;
+  phase: string;
+  branch?: string;
+  claimAdopted?: boolean;
+  writer?: string;
+  terminalRunId?: string;
+  errorClass?: string;
+  errorCode?: string;
+  readiness?: { ok: boolean; classification?: string; governed?: boolean };
+  provider?: string;
+  model?: string;
+};
+
+type DiagnosticSmoke003ExitEvent = DiagnosticBaseEvent & {
+  type: "smoke003.exit";
+  runId: string;
+  sessionId?: string;
+  sessionKey?: string;
+  phase: string;
+  branch?: string;
+  claimAdopted?: boolean;
+  writer?: string;
+  terminalRunId?: string;
+  errorClass?: string;
+  errorCode?: string;
+  readiness?: { ok: boolean; classification?: string; governed?: boolean };
+  provider?: string;
+  model?: string;
+};
+
 export type DiagnosticHeartbeatEvent = DiagnosticBaseEvent & {
   type: "diagnostic.heartbeat";
   webhooks: {
@@ -802,6 +841,8 @@ export type DiagnosticEventPayload =
   | DiagnosticRunAttemptEvent
   | DiagnosticRunProgressEvent
   | DiagnosticRunExecutionPhaseEvent
+  | DiagnosticSmoke003PhaseEvent
+  | DiagnosticSmoke003ExitEvent
   | DiagnosticHeartbeatEvent
   | DiagnosticLivenessWarningEvent
   | DiagnosticPhaseCompletedEvent

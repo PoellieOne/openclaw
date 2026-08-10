@@ -18,6 +18,7 @@ import type { ReadinessRouteClassification } from "../../agents/readiness/types.
 import type { OpenClawConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
+import { emitSmoke003Phase, getSmoke003ArmedRunId } from "../../logging/smoke003-observability.js";
 import { withBeforeAgentReplyObserver } from "../../plugins/before-agent-reply.js";
 import { setReplyPayloadMetadata } from "../reply-payload.js";
 import type { OriginatingChannelType } from "../templating.js";
@@ -304,7 +305,16 @@ export async function executePreparedReplyAgentRun(
 
   replyOperation.setPhase("running");
   const runStartedAt = Date.now();
+  const smoke003RunId = getSmoke003ArmedRunId();
+  if (smoke003RunId) {
+    emitSmoke003Phase(smoke003RunId, "PRE_PROVIDER_PHASE_admit_user_turn_ENTER");
+  }
   const userTurnAdmission = await admitUserTurn(followupRun.userTurnTranscriptRecorder);
+  if (smoke003RunId) {
+    emitSmoke003Phase(smoke003RunId, "PRE_PROVIDER_PHASE_admit_user_turn_EXIT", {
+      branch: userTurnAdmission,
+    });
+  }
   if (userTurnAdmission === "duplicate-source") {
     return returnWithQueuedFollowupDrain(undefined);
   }
@@ -370,6 +380,22 @@ export async function executePreparedReplyAgentRun(
     ...(runtimeImageTruth.ok ? {} : { runtimeImageTruth }),
     ...(effectiveExecutionBackend !== undefined ? { effectiveExecutionBackend } : {}),
   });
+  if (smoke003RunId) {
+    emitSmoke003Phase(smoke003RunId, "READINESS_PREP_ENTER");
+    emitSmoke003Phase(smoke003RunId, "READINESS_STAGE_A_RESULT", {
+      readiness: {
+        ok: preparationResult.ok,
+        ...(preparationResult.ok
+          ? {
+              governed: preparationResult.governance.governed,
+              classification: preparationResult.governance.governed
+                ? preparationResult.governance.state.classification
+                : preparationResult.governance.reason,
+            }
+          : { classification: preparationResult.code }),
+      },
+    });
+  }
   if (!preparationResult.ok) {
     return returnWithQueuedFollowupDrain({ text: SILENT_REPLY_TOKEN });
   }

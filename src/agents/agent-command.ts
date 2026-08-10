@@ -14,6 +14,13 @@ import {
   clearAgentRunContext,
   withAgentRunLifecycleGeneration,
 } from "../infra/agent-events.js";
+import {
+  bindSmoke003RunId,
+  emitSmoke003Exit,
+  emitSmoke003Phase,
+  isSmoke003Armed,
+  smoke003ErrorClassName,
+} from "../logging/smoke003-observability.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isSubagentSessionKey } from "../routing/session-key.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
@@ -71,6 +78,10 @@ async function agentCommandInternal(
   const preserveUserFacingSessionModelState =
     initialOpts.preserveUserFacingSessionModelState === true;
   const lifecycleAbortController = new AbortController();
+  bindSmoke003RunId(prepared.runId);
+  emitSmoke003Phase(prepared.runId, "AGENT_COMMAND_INTERNAL_ENTER", {
+    branch: isRawModelRun ? "raw-model-run" : "agent-run",
+  });
   const storedDeliveryMediaUrls =
     prepared.sessionEntry?.restartRecoveryDeliveryRunId === prepared.runId &&
     Array.isArray(prepared.sessionEntry.restartRecoveryDeliveryMediaUrls)
@@ -336,6 +347,9 @@ async function agentCommandInternal(
         });
         sessionEntry = persisted;
         trackedRestartRecoveryDeliveryClaim = persisted?.restartRecoveryDeliveryRunId === runId;
+        emitSmoke003Phase(runId, "AGENT_COMMAND_RESTART_CLAIM_ADOPTED", {
+          claimAdopted: trackedRestartRecoveryDeliveryClaim,
+        });
       }
       if (sessionEntry && sessionKey && !suppressVisibleSessionEffects) {
         try {
@@ -479,7 +493,27 @@ async function agentCommandInternal(
       sessionReboundDuringRun = finalized.sessionReboundDuringRun;
       return finalized.deliveryResult;
     });
+  } catch (error) {
+    if (isSmoke003Armed(runId)) {
+      const isAbort =
+        error instanceof Error &&
+        (error.name === "AbortError" ||
+          error.name === "AgentRunRestartAbortError" ||
+          error.name === "TimeoutError");
+      if (isAbort) {
+        emitSmoke003Exit(runId, "PRE_PROVIDER_ABORT", {
+          errorClass: smoke003ErrorClassName(error),
+          errorCode: error instanceof Error ? error.name : undefined,
+        });
+      } else {
+        emitSmoke003Exit(runId, "PRE_PROVIDER_EXCEPTION", {
+          errorClass: smoke003ErrorClassName(error),
+        });
+      }
+    }
+    throw error;
   } finally {
+    emitSmoke003Phase(runId, "AGENT_COMMAND_FINALLY_ENTER");
     sessionWorkAdmission?.release();
     if (internalModelRunTargets) {
       // Compaction may rotate a private session identity. Remove every owned
@@ -527,6 +561,10 @@ async function agentCommandInternal(
               shouldPersistRestartRecoveryCleanup(current, runOwnedSessionId, runId),
           });
           sessionEntry = persisted;
+          emitSmoke003Phase(runId, "AGENT_COMMAND_FINALLY_CLEANUP_WRITER", {
+            writer: "agentCommandInternal",
+            terminalRunId: runId,
+          });
         }
       } catch (error) {
         log.warn(
