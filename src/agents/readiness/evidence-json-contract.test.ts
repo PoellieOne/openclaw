@@ -5,7 +5,12 @@ import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { ReadinessCode } from "./codes.js";
 import { computeReadinessConfigDigest } from "./config-digest.js";
+import { extractReadinessConfigProjectionInput } from "./config-digest.js";
 import { parseReadinessEnvelopeV2 } from "./envelope-parser.js";
+import {
+  buildGovernedReadinessConfigSource,
+  computeGovernedExpectedConfigDigest,
+} from "./production-v2-preparation.js";
 import { prepareReadinessForRun } from "./run-preparation.js";
 import type { ReadinessPreparationInput } from "./run-preparation.js";
 
@@ -239,6 +244,52 @@ describe("readiness.v2 evidence-JSON contract (loader -> evaluator -> validator)
           expectedBytecount: payload.bytecount,
         },
         config,
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) {
+        return;
+      }
+      expect(result.governance.governed).toBe(true);
+      if (result.governance.governed) {
+        expect(result.governance.state.evaluation?.decision).toBe("READY");
+        expect(result.governance.state.mayExecute()).toBe(true);
+      }
+    } finally {
+      payload.cleanup();
+    }
+  });
+
+  it("full pipeline: short-form runtime model canonicalizes to the governing digest and returns READY", () => {
+    const configSource = buildGovernedReadinessConfigSource({
+      cfg: {},
+      agentId: "sophia",
+      provider: "openai",
+      model: "gpt-5.6-sol",
+      workspaceDir: "/state/sora/workspace",
+      agentDir: "/state/sora/agents/sophia/agent",
+    });
+    expect(configSource.effectivePrimaryModel).toBe("openai/gpt-5.6-sol");
+    const digest = computeGovernedExpectedConfigDigest(configSource);
+    const payload = writePayload(makeValidPayloadJson());
+    try {
+      const raw = makeFullEnvelopeJson(digest);
+      const loaded = parseReadinessEnvelopeV2(raw);
+      expect(loaded.ok).toBe(true);
+      if (!loaded.ok) {
+        return;
+      }
+      const result = prepareReadinessForRun({
+        routeClassification: "REAL_MODEL_EXECUTION_ROUTE",
+        evidenceJson: loaded.envelopeJson,
+        projectionId: loaded.projection?.id ?? null,
+        projectionVersion: loaded.projection?.version ?? null,
+        now: NOW,
+        v2: {
+          ...makeV2Input(payload.path, digest),
+          expectedSha256: payload.sha256,
+          expectedBytecount: payload.bytecount,
+        },
+        config: extractReadinessConfigProjectionInput(configSource),
       });
       expect(result.ok).toBe(true);
       if (!result.ok) {

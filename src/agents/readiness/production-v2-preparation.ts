@@ -9,9 +9,11 @@
  */
 import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { modelKey } from "../../shared/model-key.js";
 import { resolveDefaultAgentId } from "../agent-scope.js";
 import { resolveEffectiveModelFallbacks } from "../agent-scope.js";
 import { resolveContextInjectionMode } from "../bootstrap-files.js";
+import { normalizeModelRef } from "../model-ref-shared.js";
 import type { RunLocalProjectionState } from "./bootstrap-adapter-wiring.js";
 import type { ReadinessConfigProjectionInput, ReadinessConfigSource } from "./config-digest.js";
 import {
@@ -39,6 +41,29 @@ export type GovernedRunProjectionHolder = {
   runLocalProjectionState: RunLocalProjectionState;
 };
 
+/**
+ * Canonicalizes the effective runtime model reference for the readiness
+ * config projection. The runtime resolves model ids in short form
+ * (e.g. `gpt-5.6-sol`) while the canonical readiness contract binds the
+ * fully-qualified provider/model identity (e.g. `openai/gpt-5.6-sol`).
+ * The config digest is verbatim-sensitive, so the reference must be
+ * canonicalized before digest formation or every governed run fails
+ * CONFIG_BINDING_MISMATCH. A model id that already carries a different
+ * provider namespace is left untouched so a foreign provider ref can never
+ * be silently re-bound to this provider's identity.
+ */
+export function canonicalizeReadinessModelRef(provider: string, model: string): string {
+  const trimmed = model.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+  const normalized = normalizeModelRef(provider, trimmed);
+  if (normalized.model.includes("/")) {
+    return trimmed;
+  }
+  return modelKey(normalized.provider, normalized.model);
+}
+
 /** Builds the readiness config projection source from the effective run config. */
 export function buildGovernedReadinessConfigSource(params: {
   cfg?: OpenClawConfig;
@@ -65,7 +90,7 @@ export function buildGovernedReadinessConfigSource(params: {
   return {
     targetAgentId: params.agentId,
     defaultAgentId: resolveDefaultAgentId(params.cfg ?? {}),
-    effectivePrimaryModel: params.model,
+    effectivePrimaryModel: canonicalizeReadinessModelRef(params.provider, params.model),
     effectiveModelFallbacks: fallbacks,
     contextInjection: resolveContextInjectionMode(params.cfg, params.agentId),
     skipBootstrap: params.cfg?.agents?.defaults?.skipBootstrap ?? false,
