@@ -86,6 +86,75 @@ const refreshQueuedFollowupSessionMock = vi.fn();
 const compactState = vi.hoisted(() => ({
   compactEmbeddedAgentSessionMock: vi.fn(),
 }));
+// Pre-steer common readiness gate: the gate now runs before the prepared lane,
+// so unmocked runs are blocked before preflight compaction. Default to a
+// governed-BLOCKED verdict (identical to the unmocked missing-envelope outcome)
+// and let drain/execution-path tests opt into a governed-READY verdict.
+const readinessState = vi.hoisted(() => ({
+  loadCanonicalReadinessEnvelopeV2: vi.fn(),
+  prepareReadinessForRun: vi.fn(),
+  resolveRuntimeImageTruth: vi.fn(),
+}));
+
+vi.mock("../../agents/readiness/canonical-envelope-reader.js", () => ({
+  loadCanonicalReadinessEnvelopeV2: (...args: unknown[]) =>
+    readinessState.loadCanonicalReadinessEnvelopeV2(...args),
+}));
+
+vi.mock("../../agents/readiness/run-preparation.js", () => ({
+  prepareReadinessForRun: (...args: unknown[]) => readinessState.prepareReadinessForRun(...args),
+}));
+
+vi.mock("../../agents/readiness/runtime-provenance.js", () => ({
+  resolveRuntimeImageTruth: (...args: unknown[]) =>
+    readinessState.resolveRuntimeImageTruth(...args),
+}));
+
+function makeCommonGovernedBlocked(): unknown {
+  return {
+    ok: true,
+    governance: {
+      governed: true,
+      state: {
+        mayExecute: () => false,
+        isBlocked: () => true,
+        classification: "blocked",
+        diagnosticRef: "test",
+        evaluatedAt: Date.now(),
+        toBlockedResult: () => ({
+          isBlocked: true,
+          classification: "blocked",
+          diagnosticRef: "test",
+          evaluatedAt: Date.now(),
+          sanitizedMessage: "blocked",
+        }),
+      },
+    },
+  };
+}
+
+function makeCommonGovernedReady(): unknown {
+  return {
+    ok: true,
+    governance: {
+      governed: true,
+      state: {
+        mayExecute: () => true,
+        isBlocked: () => false,
+        classification: "ready",
+        diagnosticRef: "test",
+        evaluatedAt: Date.now(),
+        toBlockedResult: () => ({
+          isBlocked: false,
+          classification: "ready",
+          diagnosticRef: "test",
+          evaluatedAt: Date.now(),
+          sanitizedMessage: "",
+        }),
+      },
+    },
+  };
+}
 
 vi.mock("../../agents/model-fallback-runner.js", () => ({
   runWithModelFallback: (params: {
@@ -306,6 +375,20 @@ function setupAgentRunnerMocks(): void {
   loadCronStoreMock.mockClear();
   // Default: no cron jobs in store.
   loadCronStoreMock.mockResolvedValue({ version: 1, jobs: [] });
+  readinessState.loadCanonicalReadinessEnvelopeV2.mockReturnValue({
+    ok: false,
+    code: "EVIDENCE_MISSING",
+    message: "canonical envelope not found",
+  } as never);
+  readinessState.resolveRuntimeImageTruth.mockReturnValue({
+    ok: true,
+    truth: {
+      imageId: "sha256:c9515b90811c75128d97fff1bfde9f6075201d95f9f6d759f43878c2fc81229c",
+      sourceCommit: "092549f011e2bfcbfe6ac3af4bb8423ecef7422c",
+      sourceTree: "c17d48bf3368d5726beb1ff5656b00a9c3ce7a08",
+    },
+  });
+  readinessState.prepareReadinessForRun.mockReturnValue(makeCommonGovernedBlocked());
 
   // Default: no provider switch; execute the chosen provider+model.
   runWithModelFallbackMock.mockImplementation(
@@ -542,6 +625,7 @@ describe("runReplyAgent auto-compaction token update", () => {
   }, 180_000);
 
   it("keeps an unarmed preflight drain visible instead of dropping the reply", async () => {
+    readinessState.prepareReadinessForRun.mockReturnValue(makeCommonGovernedReady());
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-preflight-drain-"));
     const storePath = path.join(tmp, "sessions.json");
     const sessionKey = "agent:main:main";

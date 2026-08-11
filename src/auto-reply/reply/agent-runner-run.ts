@@ -27,6 +27,7 @@ import {
 } from "../../plugins/hook-agent-context.js";
 import { markReplyPayloadForSourceSuppressionDelivery } from "../reply-payload.js";
 import type { OriginatingChannelType } from "../templating.js";
+import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { ReplyPayload } from "../types.js";
 import {
   BLOCK_REPLY_SEND_TIMEOUT_MS,
@@ -46,8 +47,10 @@ import {
   createShouldEmitToolResult,
   isAudioPayload,
 } from "./agent-runner-helpers.js";
+import { prepareCommonReadinessForRun } from "./agent-runner-readiness-gate.js";
 import { resetReplyRunSession } from "./agent-runner-session-reset.js";
 import { resolveQueuedReplyExecutionConfig } from "./agent-runner-utils.js";
+import { resolveQueuedReplyRuntimeConfig } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
 import { resolveEffectiveBlockStreamingConfig } from "./block-streaming.js";
 import {
@@ -185,6 +188,14 @@ export async function runReplyAgent(
     }
     typing.cleanup();
     return undefined;
+  }
+
+  // Pre-branch finalization: config snapshot + agentId before the common gate.
+  followupRun.run.config = resolveQueuedReplyRuntimeConfig(followupRun.run.config);
+  followupRun.run.agentId ??= resolveDefaultAgentId(followupRun.run.config);
+  if (!prepareCommonReadinessForRun(followupRun, sessionKey, activeSessionEntry)) {
+    typing.cleanup();
+    return { text: SILENT_REPLY_TOKEN };
   }
 
   const baseShouldEmitToolResult = createShouldEmitToolResult({
@@ -443,8 +454,6 @@ export async function runReplyAgent(
     originatingAccountId: followupRun.originatingAccountId,
     agentAccountId: followupRun.run.agentAccountId,
   });
-  followupRun.run.agentId ??= resolveDefaultAgentId(followupRun.run.config);
-
   const replyToChannel = resolveOriginMessageProvider({
     originatingChannel: sessionCtx.OriginatingChannel,
     provider: sessionCtx.Surface ?? sessionCtx.Provider,

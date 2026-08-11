@@ -322,93 +322,97 @@ export async function executePreparedReplyAgentRun(
   // Suppressed delivery persists only the user transcript; crashed suppressed runs die
   // silently. Deliverable turns atomically persist transcript plus recovery ownership.
   await turnAdoptionLifecycle?.onAdopted();
-  const routeClassification: ReadinessRouteClassification = "REAL_MODEL_EXECUTION_ROUTE";
-  const envelopeResult = loadCanonicalReadinessEnvelopeV2();
-  const runtimeImageTruth = resolveRuntimeImageTruth();
-  let v2PreparationInput: Parameters<typeof prepareReadinessForRun>[0]["v2"] | undefined;
-  let effectiveExecutionBackend: Parameters<
-    typeof prepareReadinessForRun
-  >[0]["effectiveExecutionBackend"];
-  if (envelopeResult.ok && envelopeResult.projection) {
-    const envelope = envelopeResult.envelope;
-    const sessionEntry =
-      activeSessionEntry ?? (sessionKey ? activeSessionStore?.[sessionKey] : undefined);
-    const configSource = buildGovernedReadinessConfigSource({
-      cfg,
-      agentId: followupRun.run.agentId,
-      sessionKey,
-      provider: followupRun.run.provider,
-      model: followupRun.run.model,
-      workspaceDir: followupRun.run.workspaceDir,
-      agentDir: followupRun.run.agentDir,
-      sessionEntry,
-      authProfileId: followupRun.run.authProfileId,
-    });
-    effectiveExecutionBackend = configSource.effectiveExecutionBackend;
-    const expectedConfigDigest = computeGovernedExpectedConfigDigest(configSource);
-    if (runtimeImageTruth.ok) {
-      v2PreparationInput = buildGovernedV2PreparationInput({
-        envelope,
+  if (followupRun.run.readinessGovernance === undefined) {
+    // Gate-less/direct caller: fresh evaluation. Runs that crossed the common
+    // gate already carry current-run governance and must not re-evaluate.
+    const routeClassification: ReadinessRouteClassification = "REAL_MODEL_EXECUTION_ROUTE";
+    const envelopeResult = loadCanonicalReadinessEnvelopeV2();
+    const runtimeImageTruth = resolveRuntimeImageTruth();
+    let v2PreparationInput: Parameters<typeof prepareReadinessForRun>[0]["v2"] | undefined;
+    let effectiveExecutionBackend: Parameters<
+      typeof prepareReadinessForRun
+    >[0]["effectiveExecutionBackend"];
+    if (envelopeResult.ok && envelopeResult.projection) {
+      const envelope = envelopeResult.envelope;
+      const sessionEntry =
+        activeSessionEntry ?? (sessionKey ? activeSessionStore?.[sessionKey] : undefined);
+      const configSource = buildGovernedReadinessConfigSource({
+        cfg,
         agentId: followupRun.run.agentId,
-        expectedImageId: runtimeImageTruth.truth.imageId,
-        expectedSourceCommit: runtimeImageTruth.truth.sourceCommit,
-        expectedSourceTree: runtimeImageTruth.truth.sourceTree,
-        expectedConfigDigest,
-        supportedValidatorId: SUPPORTED_VALIDATOR_ID,
-        supportedValidatorVersion: SUPPORTED_VALIDATOR_VERSION,
-        now: Date.now(),
+        sessionKey,
+        provider: followupRun.run.provider,
+        model: followupRun.run.model,
+        workspaceDir: followupRun.run.workspaceDir,
+        agentDir: followupRun.run.agentDir,
+        sessionEntry,
+        authProfileId: followupRun.run.authProfileId,
+      });
+      effectiveExecutionBackend = configSource.effectiveExecutionBackend;
+      const expectedConfigDigest = computeGovernedExpectedConfigDigest(configSource);
+      if (runtimeImageTruth.ok) {
+        v2PreparationInput = buildGovernedV2PreparationInput({
+          envelope,
+          agentId: followupRun.run.agentId,
+          expectedImageId: runtimeImageTruth.truth.imageId,
+          expectedSourceCommit: runtimeImageTruth.truth.sourceCommit,
+          expectedSourceTree: runtimeImageTruth.truth.sourceTree,
+          expectedConfigDigest,
+          supportedValidatorId: SUPPORTED_VALIDATOR_ID,
+          supportedValidatorVersion: SUPPORTED_VALIDATOR_VERSION,
+          now: Date.now(),
+        });
+      }
+    }
+    let evidenceJson: string | null = null;
+    let projectionId: string | null = null;
+    let projectionVersion: string | null = null;
+    if (envelopeResult.ok) {
+      evidenceJson = envelopeResult.envelopeJson;
+      if (envelopeResult.projection) {
+        projectionId = envelopeResult.projection.id;
+        projectionVersion = envelopeResult.projection.version;
+      }
+    }
+    const preparationResult = prepareReadinessForRun({
+      routeClassification,
+      evidenceJson,
+      projectionId,
+      projectionVersion,
+      now: Date.now(),
+      ...(v2PreparationInput ? { v2: v2PreparationInput } : {}),
+      ...(runtimeImageTruth.ok ? {} : { runtimeImageTruth }),
+      ...(effectiveExecutionBackend !== undefined ? { effectiveExecutionBackend } : {}),
+    });
+    if (smoke003RunId) {
+      emitSmoke003Phase(smoke003RunId, "READINESS_PREP_ENTER");
+      emitSmoke003Phase(smoke003RunId, "READINESS_STAGE_A_RESULT", {
+        readiness: {
+          ok: preparationResult.ok,
+          ...(preparationResult.ok
+            ? {
+                governed: preparationResult.governance.governed,
+                classification: preparationResult.governance.governed
+                  ? preparationResult.governance.state.classification
+                  : preparationResult.governance.reason,
+              }
+            : { classification: preparationResult.code }),
+        },
       });
     }
-  }
-  let evidenceJson: string | null = null;
-  let projectionId: string | null = null;
-  let projectionVersion: string | null = null;
-  if (envelopeResult.ok) {
-    evidenceJson = envelopeResult.envelopeJson;
-    if (envelopeResult.projection) {
-      projectionId = envelopeResult.projection.id;
-      projectionVersion = envelopeResult.projection.version;
+    if (!preparationResult.ok) {
+      return returnWithQueuedFollowupDrain({ text: SILENT_REPLY_TOKEN });
     }
-  }
-  const preparationResult = prepareReadinessForRun({
-    routeClassification,
-    evidenceJson,
-    projectionId,
-    projectionVersion,
-    now: Date.now(),
-    ...(v2PreparationInput ? { v2: v2PreparationInput } : {}),
-    ...(runtimeImageTruth.ok ? {} : { runtimeImageTruth }),
-    ...(effectiveExecutionBackend !== undefined ? { effectiveExecutionBackend } : {}),
-  });
-  if (smoke003RunId) {
-    emitSmoke003Phase(smoke003RunId, "READINESS_PREP_ENTER");
-    emitSmoke003Phase(smoke003RunId, "READINESS_STAGE_A_RESULT", {
-      readiness: {
-        ok: preparationResult.ok,
-        ...(preparationResult.ok
-          ? {
-              governed: preparationResult.governance.governed,
-              classification: preparationResult.governance.governed
-                ? preparationResult.governance.state.classification
-                : preparationResult.governance.reason,
-            }
-          : { classification: preparationResult.code }),
-      },
-    });
-  }
-  if (!preparationResult.ok) {
-    return returnWithQueuedFollowupDrain({ text: SILENT_REPLY_TOKEN });
-  }
-  followupRun.run.readinessGovernance = preparationResult.governance;
-  if (
-    preparationResult.governance.governed === true &&
-    preparationResult.governance.state.projectionPreparation != null
-  ) {
-    const holder = assembleGovernedRunLocalHolder({
-      governance: preparationResult.governance,
-      preparation: preparationResult.governance.state.projectionPreparation,
-    });
-    followupRun.run.runLocalProjectionState = holder.runLocalProjectionState;
+    followupRun.run.readinessGovernance = preparationResult.governance;
+    if (
+      preparationResult.governance.governed === true &&
+      preparationResult.governance.state.projectionPreparation != null
+    ) {
+      const holder = assembleGovernedRunLocalHolder({
+        governance: preparationResult.governance,
+        preparation: preparationResult.governance.state.projectionPreparation,
+      });
+      followupRun.run.runLocalProjectionState = holder.runLocalProjectionState;
+    }
   }
   const runOutcome = await withBeforeAgentReplyObserver(
     {
