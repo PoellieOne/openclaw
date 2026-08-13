@@ -406,7 +406,8 @@ export function buildCodexRuntimeThreadConfigForRun(
         ringZeroMcpServerNames,
       ),
     ) ?? baseConfig;
-  if (params.bootstrapContextMode !== "lightweight") {
+  const governedAdmission = params.readinessGovernance?.governed === true;
+  if (params.bootstrapContextMode !== "lightweight" && !governedAdmission) {
     return runtimeConfig;
   }
   return (

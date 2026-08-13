@@ -1,6 +1,8 @@
 import {
   embeddedAgentLog,
+  enforceGovernedProjectionGate,
   formatErrorMessage,
+  ReadinessGateBlockedError,
   runAgentCleanupStep,
   runAgentHarnessLlmInputHook,
   runAgentHarnessLlmOutputHook,
@@ -72,6 +74,93 @@ export async function startCodexAttemptTurn(
   const { codexModelCallDiagnostics, startCodexTurn, buildLlmInputEvent } = requestRuntime;
   let turn: CodexTurnStartResponse | undefined;
   try {
+    // Terminal governed readiness gate: a Stage-A governed run must present a
+    // valid Stage-B final-context proof before provider dispatch. Any failure
+    // returns a terminal blocked result (no turn/start, no retry, no fallback).
+    const governedAdmission = runtimeParams.readinessGovernance?.governed === true;
+    try {
+      enforceGovernedProjectionGate({
+        readinessGovernance: runtimeParams.readinessGovernance,
+        runLocalProjectionState: runtimeParams.runLocalProjectionState,
+        stageB: prompt.context.stageB,
+      });
+      const runLocal = runtimeParams.runLocalProjectionState;
+      const stageB = prompt.context.stageB;
+      const governedReadiness =
+        runtimeParams.readinessGovernance?.governed === true
+          ? runtimeParams.readinessGovernance
+          : undefined;
+      void emitCodexAppServerEvent(params, {
+        stream: "codex_app_server.lifecycle",
+        data: {
+          phase: "readiness_gate",
+          harness: "codex",
+          governedAdmission: governedReadiness !== undefined,
+          mayExecute: governedReadiness?.state.mayExecute(),
+          projectionId: runLocal?.preparation.payloadId ?? null,
+          expectedDigest: runLocal?.preparation.expectedProjectionDigest ?? null,
+          stageBOk: stageB?.ok,
+          stageBCode: stageB?.code ?? null,
+          entryCount: stageB?.entryCount ?? null,
+          entryDigest: stageB?.entryDigest ?? null,
+          dispatch: "allowed",
+        },
+      });
+    } catch (error) {
+      if (error instanceof ReadinessGateBlockedError) {
+        void emitCodexAppServerEvent(params, {
+          stream: "codex_app_server.lifecycle",
+          data: {
+            phase: "readiness_gate",
+            harness: "codex",
+            governedAdmission,
+            dispatch: "blocked",
+            classification: error.classification,
+            diagnosticRef: error.diagnosticRef,
+          },
+        });
+        // The readiness gate runs after thread start and route reservation, so
+        // every pre-turn resource is already acquired. Mirror the reference
+        // terminal release sequence so the blocked return leaves the attempt in
+        // the same clean state as other pre-turn exits (no provider call).
+        trajectoryRecorder?.recordEvent("session.ended", {
+          status: "error",
+          threadId: resourceState.thread.threadId,
+          aborted: runAbortController.signal.aborted,
+          promptError: error.message,
+        });
+        markTrajectoryEndRecorded();
+        releaseCurrentRoute();
+        activateNativePreToolUseFailureFallback();
+        resourceState.nativeHookRelay?.unregister();
+        await releaseSandboxExecEnvironment();
+        await runAgentCleanupStep({
+          runId: params.runId,
+          sessionId: params.sessionId,
+          step: "codex-trajectory-flush-readiness-block",
+          log: embeddedAgentLog,
+          cleanup: async () => trajectoryRecorder?.flush(),
+        });
+        params.abortSignal?.removeEventListener("abort", abortFromUpstream);
+        await releaseSharedClientLeaseAndRetireOneShotClient();
+        return {
+          result: buildCodexTurnStartFailureResult({
+            params,
+            message: error.message,
+            promptError: error,
+            messagesSnapshot: [
+              ...historyState.messages,
+              buildCodexUserPromptMessage({
+                ...runtimeParams,
+                prompt: turnState.codexTurnPromptText,
+              }),
+            ],
+            systemPromptReport,
+          }),
+        };
+      }
+      throw error;
+    }
     codexModelCallDiagnostics.emitStarted();
     runAgentHarnessLlmInputHook({ event: buildLlmInputEvent(), ctx: hookContext, hookRunner });
     turn = await startCodexTurn();

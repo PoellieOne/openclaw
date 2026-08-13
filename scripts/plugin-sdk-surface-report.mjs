@@ -206,7 +206,8 @@ export function readPluginSdkSurfaceBudgets(env = process.env) {
       // +2: shared ingress retention defaults through channel-outbound and channel-message.
       // +1: collision-safe MCP server-name assignment for native harness catalogs.
       // +45: restore typed session-catalog and tool-results exports promised to plugins.
-      4819,
+      // +6: Codex governed-projection Gate2 readiness gate, error, verification, and contracts.
+      4825,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -245,7 +246,8 @@ export function readPluginSdkSurfaceBudgets(env = process.env) {
       // +2: shared ingress error factory through channel-outbound and channel-message.
       // +1: collision-safe MCP server-name assignment for native harness catalogs.
       // +14: restore callable session-catalog and tool-results helpers promised to plugins.
-      2896,
+      // +2: Codex governed-projection Gate2 readiness gate and verification functions.
+      2898,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(

@@ -387,6 +387,7 @@ export async function dispatchEmbeddedRunAttempt(input: {
         input.bootstrapPromptWarningSignaturesSeen.length - 1
       ],
     runLocalProjectionState: params.runLocalProjectionState,
+    readinessGovernance: params.readinessGovernance,
     suppressNextUserMessagePersistence: input.suppressNextUserMessagePersistence,
     beforeAgentFinalizeRevisionAttempts: input.beforeAgentFinalizeRevisionAttempts,
     maxBeforeAgentFinalizeRevisions: input.maxBeforeAgentFinalizeRevisions,

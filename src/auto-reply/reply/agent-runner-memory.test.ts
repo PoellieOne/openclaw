@@ -151,6 +151,8 @@ type EmbeddedAgentParams = {
   agentHarnessRuntimeOverride?: string;
   authProfileId?: unknown;
   authProfileIdSource?: unknown;
+  readinessGovernance?: unknown;
+  runLocalProjectionState?: unknown;
   prompt?: string;
   transcriptPrompt?: string;
   memoryFlushWritePath?: string;
@@ -692,6 +694,75 @@ describe("runMemoryFlushIfNeeded", () => {
       agentHarnessId: "codex",
       agentHarnessRuntimeOverride: "codex",
     });
+  });
+
+  it("does not inherit origin main-turn readinessGovernance or runLocalProjectionState on the memory flush run", async () => {
+    const sessionEntry: SessionEntry = {
+      sessionId: "session",
+      updatedAt: Date.now(),
+      totalTokens: 80_000,
+      compactionCount: 1,
+    };
+    const sessionStore = { main: sessionEntry };
+    const originReadinessGovernance = {
+      governed: true,
+      state: { mayExecute: () => true, isBlocked: () => false },
+    } as never;
+    const originRunLocalProjectionState = {
+      governance: originReadinessGovernance,
+      preparation: {
+        ok: true,
+        payloadId: "payload-1",
+        payloadVersion: "1.0.0",
+        expectedProjectionDigest: "d".repeat(64),
+        expectedBytecount: 1,
+        payloadContent: "content",
+        code: null,
+      },
+      projection: { id: "projection-1", version: "1.0.0", content: "content" },
+      injection: {
+        ok: false,
+        entryCount: 0,
+        entryDigest: null,
+        code: "PROJECTION_INJECTION_MISSING",
+      },
+    } as never;
+    const followupRun = createTestFollowupRun({
+      thinkLevel: "high",
+      readinessGovernance: originReadinessGovernance,
+      runLocalProjectionState: originRunLocalProjectionState,
+    });
+
+    const result = await runMemoryFlushIfNeeded({
+      cfg: {
+        agents: {
+          defaults: {
+            compaction: { memoryFlush: {} },
+            models: {
+              "anthropic/claude-opus-4-6": { agentRuntime: { id: "codex" } },
+            },
+          },
+        },
+      },
+      followupRun,
+      sessionCtx: { Provider: "whatsapp" } as unknown as TemplateContext,
+      defaultModel: "anthropic/claude-opus-4-6",
+      agentCfgContextTokens: 100_000,
+      resolvedVerboseLevel: "off",
+      sessionEntry,
+      sessionStore,
+      sessionKey: "main",
+      isHeartbeat: false,
+      replyOperation: createReplyOperation(),
+    });
+
+    expect(result.outcome).toBe("completed");
+    const flushCall = requireEmbeddedAgentCall();
+    expect(flushCall).toMatchObject({ trigger: "memory" });
+    expect(flushCall.readinessGovernance).toBeUndefined();
+    expect(flushCall.runLocalProjectionState).toBeUndefined();
+    expect(followupRun.run.readinessGovernance).toBe(originReadinessGovernance);
+    expect(followupRun.run.runLocalProjectionState).toBe(originRunLocalProjectionState);
   });
 
   it("counts resolved error payloads as failed memory flushes", async () => {

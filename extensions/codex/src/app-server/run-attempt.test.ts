@@ -1,8 +1,10 @@
 // Codex tests cover run attempt plugin behavior.
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
   embeddedAgentLog,
+  ReadinessGateBlockedError,
   type EmbeddedRunAttemptParams,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import { replaceRuntimeAuthProfileStoreSnapshots } from "openclaw/plugin-sdk/agent-runtime";
@@ -5739,6 +5741,159 @@ describe("runCodexAppServerAttempt", () => {
       resetAnnounced: true,
     });
     expect(fastProgressEventSummaries(onAgentEvent)).toEqual(["💨Fast: auto-on"]);
+  });
+
+  it("readiness gate: governed admission with missing projection state blocks before turn/start and releases attempt resources", async () => {
+    const { closeAndWait, events, retireSpy, state } = installCleanupTrackingClient();
+    const params = createRunParams();
+    params.cleanupBundleMcpOnRunEnd = true;
+    params.readinessGovernance = {
+      governed: true,
+      state: { mayExecute: () => true, isBlocked: () => false } as never,
+    };
+    const onAgentEvent = vi.fn();
+    params.onAgentEvent = onAgentEvent;
+
+    const result = await runCodexAppServerAttempt(params);
+
+    expect(events).not.toContain("request:turn/start");
+    expect(readAttemptTerminal(result).promptError).toBeInstanceOf(ReadinessGateBlockedError);
+    expect(retireSpy).toHaveBeenCalledWith(state.client);
+    expect(closeAndWait).toHaveBeenCalledWith({ exitTimeoutMs: 2_000, forceKillDelayMs: 250 });
+    expect(
+      onAgentEvent.mock.calls.some(
+        ([event]) => event?.data?.phase === "readiness_gate" && event?.data?.dispatch === "blocked",
+      ),
+    ).toBe(true);
+  });
+
+  it("readiness gate: governed admission with invalid Stage-B proof blocks before turn/start and releases attempt resources", async () => {
+    const { closeAndWait, events, retireSpy } = installCleanupTrackingClient();
+    const params = createRunParams();
+    params.cleanupBundleMcpOnRunEnd = true;
+    const content = "governed semantic projection content";
+    const digest = createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
+    const governedState = {
+      governed: true as const,
+      state: { mayExecute: () => true, isBlocked: () => false } as never,
+    };
+    params.readinessGovernance = governedState;
+    // Valid projection state whose governed entry cannot materialize in the
+    // final bootstrap array (no readiness bootstrap hook registered), so
+    // Stage-B verification must fail closed at the gate.
+    params.runLocalProjectionState = {
+      governance: governedState,
+      preparation: {
+        ok: true,
+        payloadId: "payload-1",
+        payloadVersion: "1.0.0",
+        expectedProjectionDigest: digest,
+        expectedBytecount: content.length,
+        payloadContent: content,
+        code: null,
+      },
+      projection: { id: "projection-1", version: "1.0.0", content },
+      injection: {
+        ok: false,
+        entryCount: 0,
+        entryDigest: null,
+        code: "PROJECTION_INJECTION_MISSING",
+      },
+    } as never;
+
+    const result = await runCodexAppServerAttempt(params);
+
+    expect(events).not.toContain("request:turn/start");
+    expect(readAttemptTerminal(result).promptError).toBeInstanceOf(ReadinessGateBlockedError);
+    expect(retireSpy).toHaveBeenCalled();
+    expect(closeAndWait).toHaveBeenCalledWith({ exitTimeoutMs: 2_000, forceKillDelayMs: 250 });
+  });
+
+  it("readiness gate: governed admission with valid Stage-B proof dispatches normally", async () => {
+    const { sessionFile, workspaceDir } = createRunPaths();
+    await fs.mkdir(workspaceDir, { recursive: true });
+    const content = "governed semantic projection content";
+    const digest = createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
+    const governedState = {
+      governed: true as const,
+      state: { mayExecute: () => true, isBlocked: () => false } as never,
+    };
+    const onAgentEvent = vi.fn();
+    const params = createParams(sessionFile, workspaceDir);
+    params.onAgentEvent = onAgentEvent;
+    params.readinessGovernance = governedState;
+    params.runLocalProjectionState = {
+      governance: governedState,
+      preparation: {
+        ok: true,
+        payloadId: "payload-1",
+        payloadVersion: "1.0.0",
+        expectedProjectionDigest: digest,
+        expectedBytecount: content.length,
+        payloadContent: content,
+        code: null,
+      },
+      projection: { id: "projection-1", version: "1.0.0", content },
+      injection: {
+        ok: false,
+        entryCount: 0,
+        entryDigest: null,
+        code: "PROJECTION_INJECTION_MISSING",
+      },
+    } as never;
+    // Emulate the governed readiness bootstrap adapter output so the final
+    // bootstrap array carries exactly one matching readiness-governance entry.
+    registerInternalHook("agent:bootstrap", (event) => {
+      const context = event.context as {
+        bootstrapFiles: Array<{ content: string; missing: boolean; name?: string; path: string }>;
+      };
+      context.bootstrapFiles = [
+        {
+          name: "readiness-governance",
+          path: "readiness://projections/projection-1",
+          content,
+          missing: false,
+        },
+      ];
+    });
+    const harness = createStartedThreadHarness();
+
+    const run = runCodexAppServerAttempt(params);
+    await harness.waitForMethod("turn/start");
+    await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+    const result = await run;
+
+    expect(readAttemptTerminal(result).promptError).toBeNull();
+    expect(
+      onAgentEvent.mock.calls.some(
+        ([event]) => event?.data?.phase === "readiness_gate" && event?.data?.dispatch === "blocked",
+      ),
+    ).toBe(false);
+  });
+
+  it("readiness gate: explicit governed=false preserves existing dispatch behavior", async () => {
+    const params = createRunParams();
+    params.readinessGovernance = { governed: false, reason: "EXPLICIT_LEGACY_ROLLOUT_EXCEPTION" };
+    const harness = createStartedThreadHarness();
+
+    const run = runCodexAppServerAttempt(params);
+    await harness.waitForMethod("turn/start");
+    await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+    const result = await run;
+
+    expect(readAttemptTerminal(result).promptError).toBeNull();
+  });
+
+  it("readiness gate: absent admission preserves non-scoped dispatch behavior", async () => {
+    const params = createRunParams();
+    const harness = createStartedThreadHarness();
+
+    const run = runCodexAppServerAttempt(params);
+    await harness.waitForMethod("turn/start");
+    await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+    const result = await run;
+
+    expect(readAttemptTerminal(result).promptError).toBeNull();
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

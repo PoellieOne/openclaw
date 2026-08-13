@@ -13,6 +13,7 @@ import type {
   CodexBundleMcpThreadConfig,
   LoadCodexBundleMcpThreadConfigParams,
 } from "../agents/codex-mcp-config.types.js";
+import { ReadinessGateBlockedError } from "../agents/embedded-agent-runner/run/attempt-prompt-submit.js";
 import type {
   EmbeddedRunAttemptParams as CoreEmbeddedRunAttemptParams,
   EmbeddedRunAttemptResult,
@@ -27,6 +28,9 @@ import {
   type AbortAndDrainEmbeddedAgentRunResult,
   type EmbeddedAgentQueueMessageOptions,
 } from "../agents/embedded-agent-runner/runs.js";
+import type { RunLocalProjectionState } from "../agents/readiness/bootstrap-adapter-wiring.js";
+import type { ProjectionInjectionAssertion } from "../agents/readiness/contracts-v2.js";
+import type { ReadinessGovernance } from "../agents/readiness/types.js";
 import type { SandboxFsBridge } from "../agents/sandbox/fs-bridge.js";
 import { formatToolDetail, resolveToolDisplay } from "../agents/tool-display.js";
 import {
@@ -416,6 +420,57 @@ export {
   resolveBootstrapFilesForRun,
 } from "../agents/bootstrap-files.js";
 export type { EmbeddedContextFile } from "../agents/embedded-agent-helpers/types.js";
+export { verifyFinalContextProjection } from "../agents/readiness/bootstrap-adapter-wiring.js";
+export type { RunLocalProjectionState };
+export { ReadinessGateBlockedError };
+export type { ProjectionInjectionAssertion };
+export type { ReadinessGovernance };
+
+/**
+ * Terminal governed readiness gate shared by plugin-owned harnesses. A run
+ * admitted by Stage-A as governed requires a valid Stage-A decision, present
+ * run-local projection state, and a valid Stage-B final-context proof before
+ * provider dispatch. Any failure throws the canonical ReadinessGateBlockedError
+ * (terminal; never retried or failed over). Non-scoped runs short-circuit.
+ */
+export function enforceGovernedProjectionGate(input: {
+  readinessGovernance?: ReadinessGovernance;
+  runLocalProjectionState?: RunLocalProjectionState;
+  stageB?: ProjectionInjectionAssertion;
+}): void {
+  if (input.readinessGovernance?.governed !== true) {
+    return;
+  }
+  if (!input.readinessGovernance.state.mayExecute()) {
+    throw new ReadinessGateBlockedError(
+      input.readinessGovernance.state.classification,
+      "readiness-gate2-stage-a",
+      "Readiness Stage A did not pass for this attempt.",
+    );
+  }
+  const runLocal = input.runLocalProjectionState;
+  if (!runLocal) {
+    throw new ReadinessGateBlockedError(
+      "PROJECTION_INJECTION_MISSING",
+      "readiness-gate2-stage-b",
+      "Readiness governed projection state is missing for this attempt.",
+    );
+  }
+  const stageB = input.stageB;
+  if (
+    !stageB ||
+    !stageB.ok ||
+    stageB.entryCount !== 1 ||
+    (runLocal.preparation.expectedProjectionDigest !== null &&
+      stageB.entryDigest !== runLocal.preparation.expectedProjectionDigest)
+  ) {
+    throw new ReadinessGateBlockedError(
+      stageB?.code ?? "PROJECTION_INJECTION_MISSING",
+      "readiness-gate2-stage-b",
+      "Readiness Stage B final-context proof is missing for this attempt.",
+    );
+  }
+}
 export { isSubagentSessionKey } from "../routing/session-key.js";
 export {
   acquireSessionWriteLock,

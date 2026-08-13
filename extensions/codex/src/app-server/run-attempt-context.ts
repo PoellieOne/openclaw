@@ -6,6 +6,8 @@ import {
   getAgentHarnessHookRunner,
   resolveContextEngineOwnerPluginId,
   runHarnessContextEngineMaintenance,
+  verifyFinalContextProjection,
+  type ProjectionInjectionAssertion,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import {
   buildCodexOpenClawPromptContext,
@@ -142,6 +144,14 @@ export async function prepareCodexAttemptContext(
     memoryToolNames,
     sandboxed: sandbox?.enabled === true,
   });
+  const runLocal = runtimeParams.runLocalProjectionState;
+  const stageB: ProjectionInjectionAssertion | undefined =
+    runLocal && runLocal.governance.governed === true
+      ? verifyFinalContextProjection(
+          workspaceBootstrapContext.bootstrapFiles,
+          runLocal.preparation.expectedProjectionDigest,
+        )
+      : undefined;
   const baseDeveloperInstructions = buildDeveloperInstructions(runtimeParams, {
     dynamicTools: toolBridge.availableSpecs,
   });
@@ -189,6 +199,7 @@ export async function prepareCodexAttemptContext(
     skillsCollaborationInstructions,
     promptState,
     codexContextProjectionMaxChars,
+    stageB,
   };
 }
 

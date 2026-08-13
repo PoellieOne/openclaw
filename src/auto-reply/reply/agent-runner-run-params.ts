@@ -127,5 +127,6 @@ export function buildEmbeddedRunBaseParams(params: {
     promptCacheKey: params.promptCacheKey,
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
     runLocalProjectionState: params.run.runLocalProjectionState,
+    readinessGovernance: params.run.readinessGovernance,
   };
 }

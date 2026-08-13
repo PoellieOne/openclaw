@@ -1532,8 +1532,17 @@ export async function runMemoryFlushIfNeeded(params: {
           sessionEntry: activeSessionEntry,
           agentRuntime: sessionRuntimeOverride,
         });
+        // Memory/maintenance runs are NOT part of the Stage-A governed admission
+        // contract. Omit the origin main-turn readiness governance and projection
+        // state here so a memory flush can never inherit or reuse them at harness
+        // dispatch (the origin followupRun object is never mutated).
+        const {
+          readinessGovernance: _originReadinessGovernance,
+          runLocalProjectionState: _originRunLocalProjectionState,
+          ...memoryRunBase
+        } = params.followupRun.run;
         const { embeddedContext, senderContext, runBaseParams } = buildEmbeddedRunExecutionParams({
-          run: { ...params.followupRun.run, thinkLevel: candidateThinkLevel },
+          run: { ...memoryRunBase, thinkLevel: candidateThinkLevel },
           replyRoute: params.followupRun,
           sessionCtx: params.sessionCtx,
           hasRepliedRef: params.opts?.hasRepliedRef,
