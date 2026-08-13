@@ -115,6 +115,13 @@ export type {
 export type { AgentHarnessQuestionGatewayCall } from "../agents/harness/gateway-question.js";
 export type EmbeddedRunAttemptParams = Omit<CoreEmbeddedRunAttemptParams, "trajectoryRecorder">;
 export type { EmbeddedRunAttemptResult };
+export {
+  emitRunCarrierDiagnostic,
+  isRunCarrierDiagnosticsEnabled,
+  RUN_CARRIER_DIAGNOSTIC_PHASES,
+  type RunCarrierDiagnosticFacts,
+  type RunCarrierDiagnosticPhase,
+} from "../agents/readiness/run-carrier-observability.js";
 export type {
   ContextEngine as HarnessContextEngine,
   ContextEngineHostCapability,

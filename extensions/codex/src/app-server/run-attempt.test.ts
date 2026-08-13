@@ -5895,5 +5895,132 @@ describe("runCodexAppServerAttempt", () => {
 
     expect(readAttemptTerminal(result).promptError).toBeNull();
   });
+
+  it("run carrier diagnostics: governed valid holder emits I4-I7 and still dispatches", async () => {
+    const { sessionFile, workspaceDir } = createRunPaths();
+    await fs.mkdir(workspaceDir, { recursive: true });
+    const content = "governed semantic projection content";
+    const digest = createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
+    const governedState = {
+      governed: true as const,
+      state: { mayExecute: () => true, isBlocked: () => false } as never,
+    };
+    const params = createParams(sessionFile, workspaceDir);
+    params.config = {
+      ...params.config,
+      diagnostics: { flags: ["run.carrier.diagnostic"] },
+    } as never;
+    params.readinessGovernance = governedState;
+    params.runLocalProjectionState = {
+      governance: governedState,
+      preparation: {
+        ok: true,
+        payloadId: "payload-1",
+        payloadVersion: "1.0.0",
+        expectedProjectionDigest: digest,
+        expectedBytecount: content.length,
+        payloadContent: content,
+        code: null,
+      },
+      projection: { id: "projection-1", version: "1.0.0", content },
+      injection: {
+        ok: false,
+        entryCount: 0,
+        entryDigest: null,
+        code: "PROJECTION_INJECTION_MISSING",
+      },
+    } as never;
+    registerInternalHook("agent:bootstrap", (event) => {
+      const context = event.context as {
+        bootstrapFiles: Array<{ content: string; missing: boolean; name?: string; path: string }>;
+      };
+      context.bootstrapFiles = [
+        {
+          name: "readiness-governance",
+          path: "readiness://projections/projection-1",
+          content,
+          missing: false,
+        },
+      ];
+    });
+    const carrierEvents: Array<
+      Extract<DiagnosticEventPayload, { type: "run.carrier.diagnostic" }>
+    > = [];
+    const stopDiagnostics = onInternalDiagnosticEvent((event) => {
+      if (event.type === "run.carrier.diagnostic") {
+        carrierEvents.push(event);
+      }
+    });
+    const harness = createStartedThreadHarness();
+
+    const run = runCodexAppServerAttempt(params);
+    await harness.waitForMethod("turn/start");
+    await harness.completeTurn({ threadId: "thread-1", turnId: "turn-1" });
+    const result = await run;
+    await waitForDiagnosticEventsDrained();
+    stopDiagnostics();
+
+    expect(readAttemptTerminal(result).promptError).toBeNull();
+    const phases = carrierEvents.map((event) => event.phase);
+    expect(phases).toContain("CODEX_ENTRY");
+    expect(phases).toContain("BOOTSTRAP_PRE");
+    expect(phases).toContain("BOOTSTRAP_POST");
+    expect(phases).toContain("GATE2");
+    const gateEvent = carrierEvents.find((event) => event.phase === "GATE2");
+    expect(gateEvent).toBeDefined();
+    expect(gateEvent).toMatchObject({
+      governedAdmission: true,
+      hasHolder: true,
+      stageBOk: true,
+      dispatch: "allowed",
+    });
+    const postEvent = carrierEvents.find((event) => event.phase === "BOOTSTRAP_POST");
+    expect(postEvent).toMatchObject({
+      containsReadinessGovernance: true,
+      bootstrapEntryCount: 1,
+    });
+    for (const event of carrierEvents) {
+      expect(JSON.stringify(event)).not.toContain("agent:main:session-1");
+      expect(JSON.stringify(event)).not.toContain(content);
+    }
+  });
+
+  it("run carrier diagnostics: governed missing holder reports GATE2 blocked and still blocks", async () => {
+    const { closeAndWait, events, retireSpy, state } = installCleanupTrackingClient();
+    const params = createRunParams();
+    params.cleanupBundleMcpOnRunEnd = true;
+    params.config = {
+      ...params.config,
+      diagnostics: { flags: ["run.carrier.diagnostic"] },
+    } as never;
+    params.readinessGovernance = {
+      governed: true,
+      state: { mayExecute: () => true, isBlocked: () => false } as never,
+    };
+    const carrierEvents: Array<
+      Extract<DiagnosticEventPayload, { type: "run.carrier.diagnostic" }>
+    > = [];
+    const stopDiagnostics = onInternalDiagnosticEvent((event) => {
+      if (event.type === "run.carrier.diagnostic") {
+        carrierEvents.push(event);
+      }
+    });
+
+    const result = await runCodexAppServerAttempt(params);
+    await waitForDiagnosticEventsDrained();
+    stopDiagnostics();
+
+    expect(events).not.toContain("request:turn/start");
+    expect(readAttemptTerminal(result).promptError).toBeInstanceOf(ReadinessGateBlockedError);
+    expect(retireSpy).toHaveBeenCalledWith(state.client);
+    expect(closeAndWait).toHaveBeenCalledWith({ exitTimeoutMs: 2_000, forceKillDelayMs: 250 });
+    const gateEvent = carrierEvents.find((event) => event.phase === "GATE2");
+    expect(gateEvent).toBeDefined();
+    expect(gateEvent).toMatchObject({
+      governedAdmission: true,
+      hasHolder: false,
+      dispatch: "blocked",
+    });
+  });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

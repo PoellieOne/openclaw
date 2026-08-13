@@ -8,6 +8,7 @@ import {
   buildBootstrapContextForFiles,
   buildWatchedSessionsHarnessContext,
   embeddedAgentLog,
+  emitRunCarrierDiagnostic,
   resolveBootstrapFilesForRun,
   type AgentMessage,
   type ContextEngineProjection,
@@ -187,6 +188,32 @@ export async function buildCodexWorkspaceBootstrapContext(params: {
       contextMode: params.params.bootstrapContextMode,
       runKind: params.params.bootstrapContextRunKind,
       runLocalProjectionState: params.params.runLocalProjectionState,
+    });
+    emitRunCarrierDiagnostic({
+      runId: params.params.runId,
+      sessionId: params.params.sessionId,
+      sessionKey: params.sessionKey,
+      config: params.params.config,
+      phase: "BOOTSTRAP_POST",
+      governed: params.params.readinessGovernance?.governed,
+      hasReadinessGovernance: params.params.readinessGovernance !== undefined,
+      hasRunLocalProjectionState: params.params.runLocalProjectionState !== undefined,
+      projectionId: params.params.runLocalProjectionState?.projection?.id,
+      projectionDigest:
+        params.params.runLocalProjectionState?.preparation.expectedProjectionDigest ?? undefined,
+      bootstrapEntryCount: bootstrapFiles.length,
+      bootstrapEntryNames: bootstrapFiles.map((file) => String(file.name ?? "")).filter(Boolean),
+      containsReadinessGovernance: bootstrapFiles.some(
+        (file) => String(file.name ?? "") === "readiness-governance",
+      ),
+      containsGenericSoulIdentity: bootstrapFiles.some((file) => {
+        const basename = String(file.name ?? "").toLowerCase();
+        return basename === "soul.md" || basename === "identity.md";
+      }),
+      injectionAssertionStatus: params.params.runLocalProjectionState?.injection.ok
+        ? "ok"
+        : (params.params.runLocalProjectionState?.injection.code ?? undefined),
+      injectionDigest: params.params.runLocalProjectionState?.injection.entryDigest ?? undefined,
     });
     const memoryToolRoutedBootstrapFiles = memoryToolsAvailable
       ? selectCodexWorkspaceMemoryReferenceFiles({

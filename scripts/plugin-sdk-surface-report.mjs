@@ -106,7 +106,8 @@ const defaultPublicDeprecatedExportsByEntrypointBudget = Object.freeze({
   "channel-reply-pipeline": 12,
   "interactive-runtime": 11,
   // +3: canonical incognito classifier projected through deprecated compatibility barrels.
-  "infra-runtime": 596,
+  // +1: run-carrier diagnostic event type projected through the deprecated infra barrel.
+  "infra-runtime": 597,
   "ssrf-policy": 1,
   "ssrf-runtime": 1,
   // +1: deprecated agent media projection re-export during the media migration window.
@@ -207,7 +208,8 @@ export function readPluginSdkSurfaceBudgets(env = process.env) {
       // +1: collision-safe MCP server-name assignment for native harness catalogs.
       // +45: restore typed session-catalog and tool-results exports promised to plugins.
       // +6: Codex governed-projection Gate2 readiness gate, error, verification, and contracts.
-      4825,
+      // +6: run-carrier observability emitter, flag gate, phase contract, facts, and event type.
+      4831,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -247,7 +249,8 @@ export function readPluginSdkSurfaceBudgets(env = process.env) {
       // +1: collision-safe MCP server-name assignment for native harness catalogs.
       // +14: restore callable session-catalog and tool-results helpers promised to plugins.
       // +2: Codex governed-projection Gate2 readiness gate and verification functions.
-      2898,
+      // +2: run-carrier observability emitter and flag gate.
+      2900,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -259,7 +262,8 @@ export function readPluginSdkSurfaceBudgets(env = process.env) {
       // +1: flushLogger projected through the deprecated text-runtime barrel.
       // +1: shared ingress error factory projected through channel-message.
       // +1: shared ingress retention defaults projected through channel-message.
-      1703,
+      // +1: run-carrier diagnostic event type projected through the deprecated infra barrel.
+      1704,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(

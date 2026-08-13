@@ -6,6 +6,7 @@ import { resolveDelegationCapability } from "../../delegation-capability.js";
 import type { AgentHarnessRuntimeArtifactBinding } from "../../harness/runtime-artifact.types.js";
 import { appendIncognitoSystemPrompt } from "../../incognito-system-prompt.js";
 import { applyAuthHeaderOverride, applyLocalNoAuthHeaderOverride } from "../../model-auth.js";
+import { emitRunCarrierDiagnostic } from "../../readiness/run-carrier-observability.js";
 import type { AgentRuntimePlan } from "../../runtime-plan/types.js";
 import { createToolTerminalObserver } from "../../tool-terminal-outcome.js";
 import type { SystemAgentToolOptions } from "../../tools/system-agent-tool.js";
@@ -397,6 +398,20 @@ export async function dispatchEmbeddedRunAttempt(input: {
     onUserMessagePersistenceInvalidated: control.onUserMessagePersistenceInvalidated,
     onAssistantErrorMessagePersisted: params.onAssistantErrorMessagePersisted,
   };
+  emitRunCarrierDiagnostic({
+    runId: params.runId,
+    sessionId: params.sessionId,
+    sessionKey: params.sessionKey,
+    storePath: params.sessionTarget?.storePath,
+    config: params.config,
+    phase: "ATTEMPT_DISPATCH",
+    governed: params.readinessGovernance?.governed,
+    hasReadinessGovernance: params.readinessGovernance !== undefined,
+    hasRunLocalProjectionState: params.runLocalProjectionState !== undefined,
+    projectionId: params.runLocalProjectionState?.projection?.id,
+    projectionDigest:
+      params.runLocalProjectionState?.preparation.expectedProjectionDigest ?? undefined,
+  });
   const rawAttempt = await runEmbeddedAttemptWithBackend(attemptParams)
     .catch((err: unknown): never => {
       throw control.getPostCompactionAbortError() ?? err;

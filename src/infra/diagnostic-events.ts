@@ -428,6 +428,42 @@ type DiagnosticSmoke003ExitEvent = DiagnosticBaseEvent & {
   model?: string;
 };
 
+/**
+ * Bounded run-carrier observability for governed P1-equivalent runs. Emitted
+ * by the shared run-carrier diagnostic helper at each contract phase; carries
+ * booleans/identities/provenance only — never prompt bodies, projection
+ * bodies, credentials, or raw session keys.
+ */
+export type DiagnosticRunCarrierEvent = DiagnosticBaseEvent & {
+  type: "run.carrier.diagnostic";
+  diagnostic_version: 1;
+  runId?: string;
+  sessionId?: string;
+  sessionKey?: string;
+  phase: string;
+  timestamp: string;
+  attemptId?: string;
+  governed?: boolean;
+  decision?: string;
+  mayExecute?: boolean;
+  hasReadinessGovernance?: boolean;
+  hasRunLocalProjectionState?: boolean;
+  projectionId?: string;
+  projectionDigest?: string;
+  bootstrapEntryCount?: number;
+  bootstrapEntryNames?: string[];
+  containsReadinessGovernance?: boolean;
+  containsGenericSoulIdentity?: boolean;
+  injectionAssertionStatus?: string;
+  injectionDigest?: string;
+  hookRegistryHasBootstrapHandler?: boolean;
+  governedAdmission?: boolean;
+  hasHolder?: boolean;
+  stageBOk?: boolean;
+  stageBCode?: string | null;
+  dispatch?: "allowed" | "blocked";
+};
+
 export type DiagnosticHeartbeatEvent = DiagnosticBaseEvent & {
   type: "diagnostic.heartbeat";
   webhooks: {
@@ -843,6 +879,7 @@ export type DiagnosticEventPayload =
   | DiagnosticRunExecutionPhaseEvent
   | DiagnosticSmoke003PhaseEvent
   | DiagnosticSmoke003ExitEvent
+  | DiagnosticRunCarrierEvent
   | DiagnosticHeartbeatEvent
   | DiagnosticLivenessWarningEvent
   | DiagnosticPhaseCompletedEvent

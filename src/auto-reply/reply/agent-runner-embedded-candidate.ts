@@ -6,6 +6,7 @@ import { runEmbeddedAgent } from "../../agents/embedded-agent.js";
 import type { FastModeAutoProgressState } from "../../agents/fast-mode.js";
 import { resolveAgentHarnessPolicy } from "../../agents/harness/policy.js";
 import { resolveOpenAIRuntimeProvider } from "../../agents/openai-routing.js";
+import { emitRunCarrierDiagnostic } from "../../agents/readiness/run-carrier-observability.js";
 import {
   AGENT_RUN_RESTART_ABORT_STOP_REASON,
   resolveAgentRunErrorLifecycleFields,
@@ -189,8 +190,23 @@ export async function runEmbeddedFallbackCandidate(params: {
       sessionKey: turn.sessionKey,
       milestone: "before_embedded_run",
     });
-    const result = await params.timing.measure("embedded_run", () =>
-      runEmbeddedAgent({
+    const result = await params.timing.measure("embedded_run", () => {
+      emitRunCarrierDiagnostic({
+        runId: params.runId,
+        sessionId: turn.followupRun.run.sessionId,
+        sessionKey: turn.sessionKey,
+        storePath: turn.storePath,
+        config: params.runtimeConfig,
+        phase: "EMBEDDED_ENTRY",
+        governed: turn.followupRun.run.readinessGovernance?.governed,
+        hasReadinessGovernance: turn.followupRun.run.readinessGovernance !== undefined,
+        hasRunLocalProjectionState: turn.followupRun.run.runLocalProjectionState !== undefined,
+        projectionId: turn.followupRun.run.runLocalProjectionState?.projection?.id,
+        projectionDigest:
+          turn.followupRun.run.runLocalProjectionState?.preparation.expectedProjectionDigest ??
+          undefined,
+      });
+      return runEmbeddedAgent({
         ...embeddedContext,
         messageActionTurnCapability,
         lifecycleGeneration: params.getLifecycleGeneration(),
@@ -376,8 +392,8 @@ export async function runEmbeddedFallbackCandidate(params: {
               };
             })()
           : undefined,
-      }),
-    );
+      });
+    });
     const resultCompactionCount = Math.max(0, result.meta?.agentMeta?.compactionCount ?? 0);
     attemptCompactionCount = Math.max(attemptCompactionCount, resultCompactionCount);
     return {

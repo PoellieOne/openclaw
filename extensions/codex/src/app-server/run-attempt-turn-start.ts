@@ -1,5 +1,6 @@
 import {
   embeddedAgentLog,
+  emitRunCarrierDiagnostic,
   enforceGovernedProjectionGate,
   formatErrorMessage,
   ReadinessGateBlockedError,
@@ -77,7 +78,31 @@ export async function startCodexAttemptTurn(
     // Terminal governed readiness gate: a Stage-A governed run must present a
     // valid Stage-B final-context proof before provider dispatch. Any failure
     // returns a terminal blocked result (no turn/start, no retry, no fallback).
-    const governedAdmission = runtimeParams.readinessGovernance?.governed === true;
+    const gateGovernance = runtimeParams.readinessGovernance;
+    const governedAdmission = gateGovernance?.governed === true;
+    const gateRunLocal = runtimeParams.runLocalProjectionState;
+    const gateStageB = prompt.context.stageB;
+    const gateBlocks =
+      governedAdmission &&
+      (!gateGovernance.state.mayExecute() ||
+        !gateRunLocal ||
+        !gateStageB ||
+        !gateStageB.ok ||
+        gateStageB.entryCount !== 1 ||
+        (gateRunLocal.preparation.expectedProjectionDigest !== null &&
+          gateStageB.entryDigest !== gateRunLocal.preparation.expectedProjectionDigest));
+    emitRunCarrierDiagnostic({
+      runId: params.runId,
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      config: params.config,
+      phase: "GATE2",
+      governedAdmission,
+      hasHolder: gateRunLocal !== undefined,
+      stageBOk: gateStageB?.ok,
+      stageBCode: gateStageB?.code ?? null,
+      dispatch: gateBlocks ? "blocked" : "allowed",
+    });
     try {
       enforceGovernedProjectionGate({
         readinessGovernance: runtimeParams.readinessGovernance,

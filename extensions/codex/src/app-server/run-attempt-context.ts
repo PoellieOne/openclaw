@@ -3,6 +3,7 @@ import {
   buildHarnessContextEngineRuntimeContext,
   CODEX_APP_SERVER_CONTEXT_ENGINE_HOST,
   embeddedAgentLog,
+  emitRunCarrierDiagnostic,
   getAgentHarnessHookRunner,
   resolveContextEngineOwnerPluginId,
   runHarnessContextEngineMaintenance,
@@ -135,6 +136,19 @@ export async function prepareCodexAttemptContext(
       (await readMirroredSessionHistoryMessages(activeTranscriptTarget)) ?? historyState.messages;
   }
   const memoryToolNames = getCodexWorkspaceMemoryToolNames(toolBridge.availableSpecs);
+  emitRunCarrierDiagnostic({
+    runId: params.runId,
+    sessionId: params.sessionId,
+    sessionKey: contextSessionKey,
+    config: params.config,
+    phase: "BOOTSTRAP_PRE",
+    governed: runtimeParams.readinessGovernance?.governed,
+    hasReadinessGovernance: runtimeParams.readinessGovernance !== undefined,
+    hasRunLocalProjectionState: runtimeParams.runLocalProjectionState !== undefined,
+    projectionId: runtimeParams.runLocalProjectionState?.projection?.id,
+    projectionDigest:
+      runtimeParams.runLocalProjectionState?.preparation.expectedProjectionDigest ?? undefined,
+  });
   const workspaceBootstrapContext = await buildCodexWorkspaceBootstrapContext({
     params: runtimeParams,
     resolvedWorkspace,

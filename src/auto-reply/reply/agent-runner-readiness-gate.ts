@@ -9,6 +9,7 @@ import {
   buildGovernedV2PreparationInput,
   computeGovernedExpectedConfigDigest,
 } from "../../agents/readiness/production-v2-preparation.js";
+import { emitRunCarrierDiagnostic } from "../../agents/readiness/run-carrier-observability.js";
 import { prepareReadinessForRun } from "../../agents/readiness/run-preparation.js";
 import { resolveRuntimeImageTruth } from "../../agents/readiness/runtime-provenance.js";
 import type { ReadinessRouteClassification } from "../../agents/readiness/types.js";
@@ -111,6 +112,21 @@ export function prepareCommonReadinessForRun(
     followupRun.run.runLocalProjectionState = holder.runLocalProjectionState as never;
   }
   followupRun.run.readinessGovernance = preparationResult.governance;
-  const governed = preparationResult.governance.governed === true;
-  return !(governed && !preparationResult.governance.state.mayExecute());
+  const governance = preparationResult.governance;
+  const governed = governance.governed === true;
+  emitRunCarrierDiagnostic({
+    sessionId: followupRun.run.sessionId,
+    sessionKey: sessionKey ?? followupRun.run.sessionKey,
+    config: followupRun.run.config,
+    phase: "STAGE_A",
+    governed,
+    decision: governed ? governance.state.classification : governance.reason,
+    mayExecute: governed ? governance.state.mayExecute() : undefined,
+    hasReadinessGovernance: followupRun.run.readinessGovernance !== undefined,
+    hasRunLocalProjectionState: followupRun.run.runLocalProjectionState !== undefined,
+    projectionId: followupRun.run.runLocalProjectionState?.projection?.id,
+    projectionDigest:
+      followupRun.run.runLocalProjectionState?.preparation.expectedProjectionDigest ?? undefined,
+  });
+  return !(governed && !governance.state.mayExecute());
 }
