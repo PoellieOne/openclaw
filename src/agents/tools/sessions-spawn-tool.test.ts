@@ -1997,5 +1997,40 @@ describe("sessions_spawn tool", () => {
     expect(spawnContext.agentSessionKey).toBe("agent:main:telegram:default:direct:456");
     expect(spawnContext.completionOwnerKey).toBe("agent:main:main");
   });
+
+  it("B3-T4A: carries the runner-owned governed transaction run id into the internal spawn context", async () => {
+    const tool = createSessionsSpawnTool({
+      agentSessionKey: "agent:c1:c1",
+      requesterRunId: "C1-RUN",
+      soraTransactionRunId: "C1-RUN",
+    });
+
+    await tool.execute("governed-child", { task: "one governed child" });
+
+    const spawnContext = mockCallArg(hoisted.spawnSubagentDirectMock, 0, 1, "spawnSubagentDirect");
+    // The governed run id travels through the INTERNAL spawn context, never a
+    // model-visible tool argument.
+    expect(spawnContext.soraTransactionRunId).toBe("C1-RUN");
+    const spawnArgs = mockCallArg(hoisted.spawnSubagentDirectMock, 0, 0, "spawnSubagentDirect");
+    // The B1 envelope is internal-only and selects the governed mint route:
+    // capability/delegation ids are absent (both-or-neither invariant holds)
+    // and the tool schema never exposes `sora`, so no caller can forge it.
+    expect(spawnArgs.sora).toEqual({ capabilityId: undefined, delegationId: undefined });
+    expect(spawnArgs.sora?.capabilityId).toBeUndefined();
+    expect(spawnArgs.sora?.delegationId).toBeUndefined();
+  });
+
+  it("B3-T4a: absent governed run id leaves ordinary spawns untouched", async () => {
+    const tool = createSessionsSpawnTool({
+      agentSessionKey: "agent:main:main",
+    });
+
+    await tool.execute("ordinary-child", { task: "ordinary work" });
+
+    const spawnContext = mockCallArg(hoisted.spawnSubagentDirectMock, 0, 1, "spawnSubagentDirect");
+    expect(spawnContext.soraTransactionRunId).toBeUndefined();
+    const spawnArgs = mockCallArg(hoisted.spawnSubagentDirectMock, 0, 0, "spawnSubagentDirect");
+    expect(spawnArgs.sora).toBeUndefined();
+  });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

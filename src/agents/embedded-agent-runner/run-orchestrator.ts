@@ -43,6 +43,7 @@ import {
   suspendSession,
   type SessionSuspensionParams,
 } from "../session-suspension.js";
+import { mintRuntimeGovernedParentHandleForRun } from "../sora-minimal-tree/governed-runtime-attachment.js";
 import { resolveSystemPromptRepoRoot } from "../system-prompt-params.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
 import { runEmbeddedAgentViaCliBackendIfEligible } from "./cli-backend-dispatch.js";
@@ -118,6 +119,21 @@ async function runEmbeddedAgentInternal(
   const runSessionTarget = await resolveAgentRunSessionTarget({
     ...paramsBase,
     sessionKey: effectiveSessionKey,
+  });
+  // Governed parent attachment (Phase B1): mint the process-local possession
+  // handle at the runtime-owned boundary. The minted handle is inert unless a
+  // governed transition consumes it; lifecycle end/error/finishing or gateway
+  // generation rotation invalidates it. Caller-controlled values never reach
+  // the mint: runId comes from the runner context, and the session key is the
+  // exact identity the embedded attempt tool boundary later resolves
+  // (sandboxSessionKey override, then the target-resolved session key).
+  void mintRuntimeGovernedParentHandleForRun({
+    runId: paramsBase.runId ?? "",
+    sessionKey:
+      paramsBase.sandboxSessionKey?.trim() ||
+      runSessionTarget.sessionKey?.trim() ||
+      runSessionTarget.sessionId ||
+      paramsBase.sessionId,
   });
   let params: RunEmbeddedAgentParamsWithSessionFile = withExecutionPhaseDiagnostics({
     ...paramsBase,

@@ -20,6 +20,18 @@ export type SpawnSubagentParams = {
   swarmLaunchReplayKey?: string;
   /** Canonical request hash checked before reusing a host-reserved collector. */
   swarmLaunchRequestFingerprint?: string;
+  /**
+   * Bounded C1→G1 one-shot subdelegation envelope. Present only on the exact
+   * minimal-tree route; ordinary S21/S22 spawns never set it. When
+   * capabilityId+delegationId are both present the pre-minted Phase-A
+   * one-shot envelope is used; when both are absent the B1 governed route
+   * mints the capability atomically at the spawn boundary through the
+   * runtime-possessed issuance seam.
+   */
+  sora?: {
+    capabilityId?: string;
+    delegationId?: string;
+  };
   cwd?: string;
   runTimeoutSeconds?: number;
   thread?: boolean;
@@ -60,6 +72,8 @@ export type SpawnSubagentContext = {
   inheritedToolAllowlist?: string[];
   inheritedToolDenylist?: string[];
   requesterRunId?: string;
+  /** Exact C1 transaction run identity for a bounded C1→G1 subdelegation. */
+  soraTransactionRunId?: string;
 };
 
 export type SpawnSubagentResult = {
@@ -75,6 +89,8 @@ export type SpawnSubagentResult = {
   /** Provider prefix parsed from resolvedModel when the ref includes one. */
   resolvedProvider?: string;
   modelApplied?: boolean;
+  /** Set when the bounded one-shot C1→G1 capability was atomically consumed. */
+  soraCapabilityConsumed?: boolean;
   error?: string;
   attachments?: {
     count: number;

@@ -150,6 +150,18 @@ export function withAgentRunLifecycleGeneration<T>(lifecycleGeneration: string, 
   return storage.run({ lifecycleGeneration, onceByRun }, run);
 }
 
+/**
+ * Returns the lifecycle generation bound to the CURRENT execution context
+ * (AsyncLocalStorage) when this code runs inside a runtime-owned agent
+ * execution, or undefined otherwise. External call paths (HTTP/RPC/tool arg
+ * dispatch without a runner-owned execution context) can never observe a
+ * value here, so it is a runtime-owned execution-context proof for internal
+ * possession handoffs. Additive; no behavior change for existing callers.
+ */
+export function getAgentEventExecutionLifecycleGeneration(): string | undefined {
+  return getAgentEventExecutionContext().getStore()?.lifecycleGeneration;
+}
+
 /** Shares one operation across fallback attempts that belong to the same admitted run. */
 export function runOncePerAgentRun<T>(runId: string, operation: string, run: () => Promise<T>) {
   const context = getAgentEventExecutionContext().getStore();

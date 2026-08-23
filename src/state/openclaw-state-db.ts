@@ -161,6 +161,37 @@ export function clearOpenClawStateDatabaseOpenFailure(pathname: string): void {
 type OpenClawStateMetadataDatabase = Pick<OpenClawStateKyselyDatabase, "schema_meta">;
 const stateDbLog = createSubsystemLogger("state/db");
 
+/**
+ * Returns the canonical schema with lazy-additive table blocks and any
+ * dependent index statements stripped, so an existing current-version state
+ * database without the lazy tables can still run the eager DDL safely.
+ * Index statements for stripped tables must be removed together with the
+ * table DDL: `CREATE INDEX` against an absent table is a hard SQL error.
+ */
+export function stripLazyAdditiveSchemaBlocks(schemaSql: string): string {
+  let eagerSchema = schemaSql;
+  for (const tableName of LAZY_ADDITIVE_STATE_TABLES) {
+    const startMarker = `CREATE TABLE IF NOT EXISTS ${tableName} (`;
+    const start = eagerSchema.indexOf(startMarker);
+    const endMarker = "\n) STRICT;";
+    const end = start >= 0 ? eagerSchema.indexOf(endMarker, start) : -1;
+    if (start < 0 || end < 0) {
+      throw new Error(`lazy additive state schema block is missing for ${tableName}`);
+    }
+    eagerSchema = `${eagerSchema.slice(0, start)}${eagerSchema.slice(end + endMarker.length)}`;
+    const indexPattern = new RegExp(
+      `CREATE (?:UNIQUE )?INDEX IF NOT EXISTS \\S+\\s+ON\\s+${escapeRegExpForIndexTable(tableName)}\\b[\\s\\S]*?;\\s*`,
+      "g",
+    );
+    eagerSchema = eagerSchema.replace(indexPattern, "");
+  }
+  return eagerSchema;
+}
+
+function escapeRegExpForIndexTable(tableName: string): string {
+  return tableName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function executeCanonicalStateSchema(
   database: DatabaseSync,
   options: { includeLazyAdditiveTables: boolean },
@@ -172,18 +203,7 @@ function executeCanonicalStateSchema(
 
   // Current-version databases may lack lazy cache tables, but the remaining
   // canonical DDL must still run so doctor can restore indexes and triggers.
-  let eagerSchema = OPENCLAW_STATE_SCHEMA_SQL;
-  for (const tableName of LAZY_ADDITIVE_STATE_TABLES) {
-    const startMarker = `CREATE TABLE IF NOT EXISTS ${tableName} (`;
-    const start = eagerSchema.indexOf(startMarker);
-    const endMarker = "\n) STRICT;";
-    const end = start >= 0 ? eagerSchema.indexOf(endMarker, start) : -1;
-    if (start < 0 || end < 0) {
-      throw new Error(`lazy additive state schema block is missing for ${tableName}`);
-    }
-    eagerSchema = `${eagerSchema.slice(0, start)}${eagerSchema.slice(end + endMarker.length)}`;
-  }
-  database.exec(eagerSchema);
+  database.exec(stripLazyAdditiveSchemaBlocks(OPENCLAW_STATE_SCHEMA_SQL));
 }
 
 export function repairOpenClawStateDatabaseSchema(options: OpenClawStateDatabaseOptions = {}): {

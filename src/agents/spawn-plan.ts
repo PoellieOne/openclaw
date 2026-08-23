@@ -20,6 +20,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { getSessionBindingService } from "../infra/outbound/session-binding-service.js";
 import { resolveAgentConfig } from "./agent-scope.js";
 import { resolveChildAdmission, type ChildAdmissionCap } from "./child-admission.js";
+import { resolveSoraC1G1SpawnGate } from "./sora-minimal-tree/spawn-gate.js";
 import { resolveSubagentCapabilities } from "./subagent-capabilities.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
 import { countActiveRunsForSession } from "./subagent-registry.js";
@@ -293,6 +294,20 @@ export function resolveSpawnAdmission(params: {
   requestedAgentId?: string;
   configuredAgentIds: string[];
   additionalActiveChildren?: number;
+  /**
+   * Bounded C1→G1 one-shot subdelegation envelope. Present only on the exact
+   * minimal-tree route; ordinary S21/S22 spawns never set this. When
+   * capabilityId/delegationId are present the pre-minted Phase-A one-shot
+   * gate runs before any descendant execution becomes eligible; the B1
+   * governed route omits them and the capability is minted atomically by the
+   * governed issuance seam at spawn time (possession-carried), so no
+   * caller-supplied capability identity is ever accepted.
+   */
+  sora?: {
+    capabilityId?: string;
+    delegationId?: string;
+    requesterTransactionRunId: string;
+  };
 }):
   | {
       ok: true;
@@ -338,6 +353,31 @@ export function resolveSpawnAdmission(params: {
       });
   if (!childAdmission.ok) {
     return childAdmission;
+  }
+  if (params.sora) {
+    if (params.sora.capabilityId && params.sora.delegationId) {
+      // Pre-minted Phase-A one-shot envelope (non-B1 callers): the fail-closed
+      // gate runs before any descendant execution becomes eligible.
+      const gate = resolveSoraC1G1SpawnGate({
+        capabilityId: params.sora.capabilityId,
+        delegationId: params.sora.delegationId,
+        requesterSessionKey: params.requesterSessionKey,
+        requesterTransactionRunId: params.sora.requesterTransactionRunId,
+        callerDepth,
+        activeChildren:
+          (collector?.liveChildren ?? 0) +
+          countActiveRunsForSession(params.requesterSessionKey, { collect: false }),
+        maxActiveChildren:
+          params.cfg.agents?.defaults?.subagents?.maxChildrenPerAgent ??
+          DEFAULT_SUBAGENT_MAX_CHILDREN_PER_AGENT,
+      });
+      if (!gate.ok) {
+        return { ok: false, error: gate.failure.message };
+      }
+    }
+    // B1 governed route: no capability identity is caller-supplied; the
+    // capability is minted atomically by the governed issuance seam at the
+    // spawn boundary (runtime possession carried internally).
   }
   const requesterSubagentConfig = resolveAgentConfig(
     params.cfg,

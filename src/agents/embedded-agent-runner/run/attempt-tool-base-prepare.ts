@@ -14,6 +14,7 @@ import {
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { supportsModelTools } from "../../model-tool-support.js";
 import type { SandboxContext } from "../../sandbox/types.js";
+import { resolveGovernedSpawnRunIdForRequester } from "../../sora-minimal-tree/governed-runtime-attachment.js";
 import { isAgentToolRestartSafe } from "../../tool-replay-safety.js";
 import {
   createToolSearchCatalogRef,
@@ -196,6 +197,16 @@ export function prepareEmbeddedAttemptToolBase(params: {
       return replaySafetyOptions.declaredReplaySafe(candidate);
     },
   };
+  // B2 production source seam: the bounded C1→G1 governed transaction run id
+  // is resolved HERE, at the runner-owned tool construction boundary, through
+  // the runtime possession carry. It is never a tool arg, JSON/RPC field, or
+  // caller-supplied value. Ordinary sessions (no live governed parent
+  // possession / no P0_C1 parent edge) resolve to undefined and never route
+  // through governed issuance.
+  const soraTransactionRunId = resolveGovernedSpawnRunIdForRequester({
+    requesterRunId: attempt.runId,
+    requesterSessionKey: params.sandboxSessionKey,
+  });
   const constructedToolsRaw = !shouldConstructTools
     ? []
     : (() => {
@@ -251,6 +262,7 @@ export function prepareEmbeddedAttemptToolBase(params: {
           abortSignal: params.runAbortController.signal,
           modelProvider: attempt.provider,
           modelId: attempt.modelId,
+          soraTransactionRunId,
           skillWorkshop: {
             env: attempt.skillWorkshopProposalEnv,
             proposalOnly: attempt.skillWorkshopProposalOnly,

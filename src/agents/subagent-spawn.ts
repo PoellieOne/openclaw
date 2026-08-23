@@ -14,6 +14,8 @@ import {
   runWithGatewayIndependentRootWorkContinuation,
 } from "../process/gateway-work-admission.js";
 import { recordSessionCreated, recordSubagentSpawned } from "../sessions/session-state-events.js";
+import { issueGovernedSubdelegationForSpawn } from "./sora-minimal-tree/governed-subdelegation-issuance.js";
+import { consumeSoraC1G1Capability } from "./sora-minimal-tree/one-shot-subdelegation.js";
 import {
   runSpawnPipeline,
   type SpawnBackendAdapter,
@@ -122,6 +124,7 @@ export async function spawnSubagentDirect(
       ownership,
       requesterAgentId,
       targetAgentId,
+      sora: runtimeSora,
     },
     swarm: {
       config: swarmConfig,
@@ -138,6 +141,7 @@ export async function spawnSubagentDirect(
   let hasBoundThreadDeliveryOrigin = false;
   let childRunId: string = childIdem;
   let swarmReservationPending = reservationPending;
+  let soraCapabilityConsumed = false;
   try {
     const childPlan = await resolveSubagentChildPlan({
       request: params,
@@ -166,6 +170,43 @@ export async function spawnSubagentDirect(
       resolvedModelMetadata,
     } = childPlan.resolved;
     let { childSessionOrigin } = childPlan.resolved;
+    if (runtimeSora) {
+      // Bounded one-shot route. The C1→G1 capability is minted HERE through
+      // the governed issuance seam when the parent run possesses a live
+      // runtime-owned parent handle (Phase-B1 possession carry); issuance
+      // then atomically creates the C1→G1 edge + grant + readiness +
+      // capability inside one BEGIN IMMEDIATE transaction. Failure is
+      // terminal; retry/fallback are forbidden.
+      const issued = issueGovernedSubdelegationForSpawn({
+        parentRunId: runtimeSora.requesterTransactionRunId,
+        parentSessionKey: requesterInternalKey,
+        granteeSessionKey: childSessionKey,
+      });
+      if (!issued.ok) {
+        return {
+          status: "forbidden",
+          error: `sora governed subdelegation rejected: ${issued.detail ?? issued.reason}`,
+        };
+      }
+      const consume = consumeSoraC1G1Capability(
+        {
+          capabilityId: issued.capabilityId,
+          grantorSessionKey: requesterInternalKey,
+          transactionRunId: runtimeSora.requesterTransactionRunId,
+          childSessionKey,
+          childRunId,
+          now: Date.now(),
+        },
+        {}, // shared state DB default path; the tables are lazy-additive shared-state tables
+      );
+      if (!consume.ok) {
+        return {
+          status: "forbidden",
+          error: `sora one-shot subdelegation rejected: ${consume.detail ?? consume.reason}`,
+        };
+      }
+      soraCapabilityConsumed = true;
+    }
     const spawnedByKey = requesterInternalKey;
     const { resolvedModel, thinkingOverride } = plan;
     const initialSession = await createInitialSubagentSession({
@@ -632,6 +673,7 @@ export async function spawnSubagentDirect(
         : acceptedNote,
       ...resolvedModelMetadata,
       modelApplied: resolvedModel ? modelApplied : undefined,
+      ...(soraCapabilityConsumed ? { soraCapabilityConsumed: true } : {}),
       attachments: attachmentsReceipt,
     };
   } finally {

@@ -474,6 +474,14 @@ type OpenClawCodingToolsOptions = {
   trustedInternalHandoff?: boolean;
   /** Trusted server-stamped authority for an explicitly capped scheduled run. */
   scheduledToolPolicy?: ScheduledToolPolicyContext;
+  /**
+   * Runner-owned governed transaction run id for the bounded C1→G1
+   * subdelegation route (Phase B1). Set ONLY by the embedded runner-owned
+   * tool construction boundary via the runtime possession carry; never
+   * caller-supplied, never from tool args, JSON, RPC, or HTTP data. Ordinary
+   * S21/S22 spawn surfaces never set it.
+   */
+  soraTransactionRunId?: string;
 };
 
 function createOpenClawCodingToolsInternal(options?: OpenClawCodingToolsOptions): AnyAgentTool[] {
@@ -986,6 +994,7 @@ function createOpenClawCodingToolsInternal(options?: OpenClawCodingToolsOptions)
             agentMemberRoleIds: options?.memberRoleIds,
             agentDir: options?.agentDir,
             preparedModelRuntime: options?.preparedModelRuntime,
+            soraTransactionRunId: options?.soraTransactionRunId,
             sandboxRoot,
             sandboxContainerWorkdir: sandbox?.containerWorkdir,
             sandboxFsBridge,

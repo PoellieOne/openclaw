@@ -38,6 +38,12 @@ type ResolvedSubagentSpawnRequest = {
     ownership: ReturnType<typeof resolveSubagentSpawnOwnership>;
     requesterAgentId: string;
     targetAgentId: string;
+    /** Bounded C1→G1 one-shot envelope; absent for ordinary S21/S22 spawns. */
+    sora?: {
+      capabilityId?: string;
+      delegationId?: string;
+      requesterTransactionRunId: string;
+    };
   };
   swarm: {
     config: ReturnType<typeof resolveSwarmConfig>;
@@ -167,6 +173,29 @@ export function resolveSubagentSpawnRequest(
       "sessions_spawn swarm parameters require tools.swarm.enabled=true.",
     );
   }
+  const soraEnvelope = params.sora
+    ? {
+        capabilityId: params.sora.capabilityId?.trim() || undefined,
+        delegationId: params.sora.delegationId?.trim() || undefined,
+        requesterTransactionRunId: (ctx.soraTransactionRunId ?? "").trim(),
+      }
+    : undefined;
+  if (
+    soraEnvelope &&
+    (!soraEnvelope.requesterTransactionRunId ||
+      Boolean(soraEnvelope.capabilityId) !== Boolean(soraEnvelope.delegationId))
+  ) {
+    return rejectSubagentSpawnRequest(
+      "forbidden",
+      "sora subdelegation envelope requires requesterTransactionRunId, and capabilityId+delegationId must both be present (pre-minted Phase-A envelope) or both absent (B1 governed mint).",
+    );
+  }
+  if (soraEnvelope && params.collect) {
+    return rejectSubagentSpawnRequest(
+      "forbidden",
+      "sora bounded C1→G1 subdelegation does not support swarm collect mode.",
+    );
+  }
   if (params.outputSchema && !params.collect) {
     return rejectSubagentSpawnRequest(
       "error",
@@ -230,6 +259,14 @@ export function resolveSubagentSpawnRequest(
       targetAgentId,
       requestedAgentId: effectiveRequestedAgentId,
       configuredAgentIds,
+      ...(soraEnvelope
+        ? {
+            sora: {
+              ...soraEnvelope,
+              requesterTransactionRunId: soraEnvelope.requesterTransactionRunId,
+            },
+          }
+        : {}),
     });
   };
   const admission = resolveAdmission();
@@ -296,6 +333,7 @@ export function resolveSubagentSpawnRequest(
         ownership,
         requesterAgentId,
         targetAgentId,
+        ...(soraEnvelope ? { sora: soraEnvelope } : {}),
       },
       swarm: {
         config: swarmConfig,

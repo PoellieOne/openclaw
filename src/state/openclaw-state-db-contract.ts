@@ -14,6 +14,14 @@ export const LAZY_ADDITIVE_STATE_TABLES = [
   "skill_workshop_proposal_origin_runs",
   "skill_workshop_proposal_rollbacks",
   "skill_workshop_proposals",
+  "sora_delegation_edges",
+  "sora_c1_g1_capabilities",
+  "sora_integration_objects",
+  "sora_canonicalization_grants",
+  "governed_transaction_runs",
+  "authoritative_caller_bindings",
+  "governed_subdelegation_grants",
+  "sora_edge_readiness",
 ] as const;
 /** Maximum time one synchronous SQLite call may wait for a lock. */
 export const OPENCLAW_SQLITE_BUSY_TIMEOUT_MS = 5_000;

@@ -163,6 +163,17 @@ export interface AuthProfileStores {
   updated_at: number;
 }
 
+export interface AuthoritativeCallerBindings {
+  binding_id: string;
+  created_at: number;
+  handle_claim: string;
+  lifecycle_generation: string;
+  run_id: string;
+  session_key: string;
+  transaction_id: string;
+  updated_at: number;
+}
+
 export interface BackupRuns {
   archive_path: string;
   created_at: number;
@@ -730,6 +741,42 @@ export interface GatewayRestartSentinel {
   version: number;
 }
 
+export interface GovernedSubdelegationGrants {
+  authority_id: string;
+  capability_id: string;
+  delegation_id: string;
+  fallback_allowed: Generated<number>;
+  further_delegation_allowed: Generated<number>;
+  grant_id: string;
+  grantee_session_key: string;
+  grantor_session_key: string;
+  holder_session_key: string;
+  issued_at: number;
+  lifecycle_generation: string;
+  max_depth_from_p0: Generated<number>;
+  max_descendants: Generated<number>;
+  max_uses: Generated<number>;
+  parent_edge_delegation_id: string;
+  parent_transaction_run_id: string;
+  provenance_json: string;
+  retry_allowed: Generated<number>;
+  status: string;
+  updated_at: number;
+}
+
+export interface GovernedTransactionRuns {
+  authoritative_run_id: string;
+  authoritative_session_key: string;
+  created_at: number;
+  grant_id: string | null;
+  kind: string;
+  lifecycle_generation: string;
+  parent_transaction_id: string | null;
+  status: string;
+  transaction_id: string;
+  updated_at: number;
+}
+
 export interface InstalledPluginIndex {
   compat_registry_version: string;
   diagnostics_json: string;
@@ -1191,6 +1238,101 @@ export interface SkillWorkshopProposals {
   workspace_dir: string;
 }
 
+export interface SoraC1G1Capabilities {
+  authority_id: string;
+  capability_id: string;
+  consumed: Generated<number>;
+  consumed_at: number | null;
+  consumption_error: string | null;
+  created_at: number;
+  delegation_id: string;
+  fallback_allowed: Generated<number>;
+  further_delegation_allowed: Generated<number>;
+  grantee_session_key: string;
+  grantor_session_key: string;
+  issue_authority_id: string;
+  issue_delegation_id: string;
+  max_depth_from_p0: Generated<number>;
+  max_descendants: Generated<number>;
+  max_uses: Generated<number>;
+  reserved_child_session_key: string | null;
+  reserved_run_id: string | null;
+  retry_allowed: Generated<number>;
+  transaction_run_id: string;
+  updated_at: number;
+}
+
+export interface SoraCanonicalizationGrants {
+  authority_id: string;
+  created_at: number;
+  delegation_id: string;
+  grant_id: string;
+  integration_id: string;
+  parent_session_key: string;
+  parent_transaction_run_id: string;
+  result_digest: string;
+  revoked: Generated<number>;
+  revoked_at: number | null;
+  revokes_edge_delegation_id: string | null;
+  root_delegation_id: string;
+  updated_at: number;
+  used: Generated<number>;
+  used_at: number | null;
+}
+
+export interface SoraDelegationEdges {
+  authority_id: string;
+  authority_json: string;
+  created_at: number;
+  delegation_id: string;
+  depth: number;
+  edge_kind: string;
+  fallback_allowed: Generated<number>;
+  further_delegation_allowed: Generated<number>;
+  grantee_session_key: string;
+  grantee_transaction_run_id: string | null;
+  grantor_session_key: string;
+  grantor_transaction_run_id: string;
+  parent_delegation_id: string | null;
+  retry_allowed: Generated<number>;
+  revocation_reason: string | null;
+  root_delegation_id: string | null;
+  updated_at: number;
+}
+
+export interface SoraEdgeReadiness {
+  authority_id: string;
+  created_at: number;
+  delegation_id: string;
+  grant_id: string;
+  lifecycle_generation: string;
+  readiness_id: string;
+  status: string;
+  updated_at: number;
+}
+
+export interface SoraIntegrationObjects {
+  authority_id: string;
+  canonicalized: Generated<number>;
+  canonicalized_at: number | null;
+  child_result_run_id: string;
+  child_result_session_key: string;
+  classification: string;
+  created_at: number;
+  delegation_id: string;
+  integration_id: string;
+  integration_status: string;
+  kind: string;
+  originating_transaction_run_id: string;
+  parent_result_change_summary: string | null;
+  parent_result_changed: Generated<number>;
+  parent_session_key: string;
+  parent_transaction_run_id: string | null;
+  provenance_json: string;
+  result_digest: string;
+  updated_at: number;
+}
+
 export interface StateLeases {
   created_at: number;
   expires_at: number | null;
@@ -1558,6 +1700,7 @@ export interface DB {
   audit_identity_keys: AuditIdentityKeys;
   auth_profile_state: AuthProfileState;
   auth_profile_stores: AuthProfileStores;
+  authoritative_caller_bindings: AuthoritativeCallerBindings;
   backup_runs: BackupRuns;
   capture_blobs: CaptureBlobs;
   capture_events: CaptureEvents;
@@ -1594,6 +1737,8 @@ export interface DB {
   gateway_restart_handoff: GatewayRestartHandoff;
   gateway_restart_intent: GatewayRestartIntent;
   gateway_restart_sentinel: GatewayRestartSentinel;
+  governed_subdelegation_grants: GovernedSubdelegationGrants;
+  governed_transaction_runs: GovernedTransactionRuns;
   installed_plugin_index: InstalledPluginIndex;
   macos_port_guardian_records: MacosPortGuardianRecords;
   managed_outgoing_image_records: ManagedOutgoingImageRecords;
@@ -1632,6 +1777,11 @@ export interface DB {
   skill_workshop_proposal_origin_runs: SkillWorkshopProposalOriginRuns;
   skill_workshop_proposal_rollbacks: SkillWorkshopProposalRollbacks;
   skill_workshop_proposals: SkillWorkshopProposals;
+  sora_c1_g1_capabilities: SoraC1G1Capabilities;
+  sora_canonicalization_grants: SoraCanonicalizationGrants;
+  sora_delegation_edges: SoraDelegationEdges;
+  sora_edge_readiness: SoraEdgeReadiness;
+  sora_integration_objects: SoraIntegrationObjects;
   state_leases: StateLeases;
   subagent_runs: SubagentRuns;
   task_delivery_state: TaskDeliveryState;

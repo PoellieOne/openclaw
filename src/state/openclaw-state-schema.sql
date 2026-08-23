@@ -2189,3 +2189,178 @@ CREATE TABLE IF NOT EXISTS model_catalog_remote (
   last_modified TEXT,
   checked_at INTEGER NOT NULL
 ) STRICT;
+
+CREATE TABLE IF NOT EXISTS sora_delegation_edges (
+  delegation_id TEXT NOT NULL PRIMARY KEY,
+  authority_id TEXT NOT NULL UNIQUE,
+  parent_delegation_id TEXT,
+  root_delegation_id TEXT,
+  grantor_session_key TEXT NOT NULL,
+  grantee_session_key TEXT NOT NULL,
+  grantor_transaction_run_id TEXT NOT NULL,
+  grantee_transaction_run_id TEXT,
+  edge_kind TEXT NOT NULL CHECK (edge_kind IN ('P0_C1', 'C1_G1')),
+  depth INTEGER NOT NULL CHECK (depth >= 0),
+  authority_json TEXT NOT NULL,
+  retry_allowed INTEGER NOT NULL DEFAULT 0 CHECK (retry_allowed IN (0, 1)),
+  fallback_allowed INTEGER NOT NULL DEFAULT 0 CHECK (fallback_allowed IN (0, 1)),
+  further_delegation_allowed INTEGER NOT NULL DEFAULT 0 CHECK (further_delegation_allowed IN (0, 1)),
+  revocation_reason TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_sora_delegation_edges_grantee
+  ON sora_delegation_edges(grantee_session_key, delegation_id);
+
+CREATE TABLE IF NOT EXISTS sora_c1_g1_capabilities (
+  capability_id TEXT NOT NULL PRIMARY KEY,
+  delegation_id TEXT NOT NULL UNIQUE,
+  authority_id TEXT NOT NULL UNIQUE,
+  issue_delegation_id TEXT NOT NULL,
+  issue_authority_id TEXT NOT NULL,
+  grantor_session_key TEXT NOT NULL,
+  grantee_session_key TEXT NOT NULL,
+  transaction_run_id TEXT NOT NULL,
+  max_uses INTEGER NOT NULL DEFAULT 1 CHECK (max_uses = 1),
+  max_descendants INTEGER NOT NULL DEFAULT 1 CHECK (max_descendants = 1),
+  max_depth_from_p0 INTEGER NOT NULL DEFAULT 2 CHECK (max_depth_from_p0 = 2),
+  retry_allowed INTEGER NOT NULL DEFAULT 0 CHECK (retry_allowed IN (0, 1)),
+  fallback_allowed INTEGER NOT NULL DEFAULT 0 CHECK (fallback_allowed IN (0, 1)),
+  further_delegation_allowed INTEGER NOT NULL DEFAULT 0 CHECK (further_delegation_allowed IN (0, 1)),
+  consumed INTEGER NOT NULL DEFAULT 0 CHECK (consumed IN (0, 1)),
+  reserved_child_session_key TEXT,
+  reserved_run_id TEXT,
+  consumed_at INTEGER,
+  consumption_error TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_sora_capabilities_grantee
+  ON sora_c1_g1_capabilities(grantee_session_key, consumed, delegation_id);
+
+CREATE TABLE IF NOT EXISTS sora_integration_objects (
+  integration_id TEXT NOT NULL PRIMARY KEY,
+  delegation_id TEXT NOT NULL UNIQUE,
+  authority_id TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL CHECK (kind IN ('C1_G1', 'P0_C1')),
+  child_result_session_key TEXT NOT NULL,
+  child_result_run_id TEXT NOT NULL,
+  originating_transaction_run_id TEXT NOT NULL,
+  parent_session_key TEXT NOT NULL,
+  parent_transaction_run_id TEXT,
+  result_digest TEXT NOT NULL,
+  classification TEXT NOT NULL CHECK (classification IN ('ACCEPTED', 'REJECTED', 'PENDING')),
+  integration_status TEXT NOT NULL CHECK (integration_status IN ('TRANSPORT_RECEIVED', 'CLASSIFIED', 'INTEGRATED', 'REJECTED')),
+  parent_result_changed INTEGER NOT NULL DEFAULT 0 CHECK (parent_result_changed IN (0, 1)),
+  parent_result_change_summary TEXT,
+  canonicalized INTEGER NOT NULL DEFAULT 0 CHECK (canonicalized IN (0, 1)),
+  canonicalized_at INTEGER,
+  provenance_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_sora_integration_objects_child
+  ON sora_integration_objects(child_result_session_key, kind, classification, integration_id);
+
+CREATE TABLE IF NOT EXISTS sora_canonicalization_grants (
+  grant_id TEXT NOT NULL PRIMARY KEY,
+  integration_id TEXT NOT NULL UNIQUE,
+  delegation_id TEXT NOT NULL,
+  authority_id TEXT NOT NULL UNIQUE,
+  root_delegation_id TEXT NOT NULL,
+  parent_session_key TEXT NOT NULL,
+  parent_transaction_run_id TEXT NOT NULL,
+  result_digest TEXT NOT NULL,
+  revokes_edge_delegation_id TEXT,
+  used INTEGER NOT NULL DEFAULT 0 CHECK (used IN (0, 1)),
+  revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)),
+  used_at INTEGER,
+  revoked_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_sora_canonicalization_grants_edge
+  ON sora_canonicalization_grants(delegation_id, used, revoked);
+
+CREATE TABLE IF NOT EXISTS governed_transaction_runs (
+  transaction_id TEXT NOT NULL PRIMARY KEY,
+  parent_transaction_id TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('PARENT', 'CHILD')),
+  status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'COMPLETED', 'FAILED', 'ABORTED', 'CLOSED')),
+  lifecycle_generation TEXT NOT NULL,
+  authoritative_session_key TEXT NOT NULL,
+  authoritative_run_id TEXT NOT NULL,
+  grant_id TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_governed_transaction_runs_parent
+  ON governed_transaction_runs(parent_transaction_id, status);
+
+CREATE TABLE IF NOT EXISTS authoritative_caller_bindings (
+  binding_id TEXT NOT NULL PRIMARY KEY,
+  transaction_id TEXT NOT NULL UNIQUE,
+  session_key TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  lifecycle_generation TEXT NOT NULL,
+  handle_claim TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_authoritative_caller_bindings_session
+  ON authoritative_caller_bindings(session_key, run_id);
+
+CREATE TABLE IF NOT EXISTS governed_subdelegation_grants (
+  grant_id TEXT NOT NULL PRIMARY KEY,
+  delegation_id TEXT NOT NULL UNIQUE,
+  authority_id TEXT NOT NULL UNIQUE,
+  capability_id TEXT NOT NULL UNIQUE,
+  parent_transaction_run_id TEXT NOT NULL,
+  grantor_session_key TEXT NOT NULL,
+  grantee_session_key TEXT NOT NULL,
+  holder_session_key TEXT NOT NULL,
+  parent_edge_delegation_id TEXT NOT NULL,
+  lifecycle_generation TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'CLOSED')),
+  max_uses INTEGER NOT NULL DEFAULT 1 CHECK (max_uses = 1),
+  max_descendants INTEGER NOT NULL DEFAULT 1 CHECK (max_descendants = 1),
+  max_depth_from_p0 INTEGER NOT NULL DEFAULT 2 CHECK (max_depth_from_p0 = 2),
+  retry_allowed INTEGER NOT NULL DEFAULT 0 CHECK (retry_allowed IN (0, 1)),
+  fallback_allowed INTEGER NOT NULL DEFAULT 0 CHECK (fallback_allowed IN (0, 1)),
+  further_delegation_allowed INTEGER NOT NULL DEFAULT 0 CHECK (further_delegation_allowed IN (0, 1)),
+  provenance_json TEXT NOT NULL,
+  issued_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_governed_subdelegation_grants_grantee
+  ON governed_subdelegation_grants(grantee_session_key, status);
+
+-- B1 duplicate-prevention invariant: one ACTIVE issuance per parent governed
+-- issuance scope. The scope is the exact unrevoked transition identity
+-- (parent transaction run + grantor + grantee); a closed/revoked grant
+-- releases the scope for a fresh single valid issuance. DB-enforced so two
+-- competing equivalent issuances can never both commit an ACTIVE grant.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_governed_subdelegation_grants_issuance_scope
+  ON governed_subdelegation_grants(parent_transaction_run_id, grantor_session_key, grantee_session_key)
+  WHERE status = 'ACTIVE';
+
+CREATE TABLE IF NOT EXISTS sora_edge_readiness (
+  readiness_id TEXT NOT NULL PRIMARY KEY,
+  grant_id TEXT NOT NULL UNIQUE,
+  delegation_id TEXT NOT NULL UNIQUE,
+  authority_id TEXT NOT NULL UNIQUE,
+  lifecycle_generation TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('READY', 'REVOKED', 'CLOSED')),
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_sora_edge_readiness_grant
+  ON sora_edge_readiness(grant_id, status);

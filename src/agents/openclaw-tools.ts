@@ -217,6 +217,8 @@ export function createOpenClawTools(
     onYield?: (message: string) => Promise<void> | void;
     /** Allow plugin tools for this tool set to late-bind the gateway subagent. */
     allowGatewaySubagentBinding?: boolean;
+    /** Runner-owned governed transaction run id for the bounded C1→G1 route. */
+    soraTransactionRunId?: string;
   } & SpawnedToolContext &
     ModelAwareToolContext,
 ): AnyAgentTool[] {
@@ -670,6 +672,7 @@ export function createOpenClawTools(
             config: resolvedConfig,
             requesterAgentIdOverride: sessionAgentId,
             requesterRunId: options?.runId,
+            soraTransactionRunId: options?.soraTransactionRunId,
             swarmCollector: options?.swarmCollector,
             workspaceDir: spawnWorkspaceDir,
             inheritedToolAllowlist: options?.inheritedToolAllowlist,

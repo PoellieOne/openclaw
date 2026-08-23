@@ -281,6 +281,15 @@ export function createSessionsSpawnTool(
     /** Explicit agent ID override for cron/hook sessions where session key parsing may not work. */
     requesterAgentIdOverride?: string;
     requesterRunId?: string;
+    /**
+     * Runner-owned governed transaction run id for the bounded C1→G1
+     * subdelegation route (Phase B1). Set ONLY from the embedded
+     * runner-owned tool construction boundary through the runtime possession
+     * carry; never caller-supplied, never from tool args. Ordinary S21/S22
+     * spawn surfaces never set it, so the governed envelope is never
+     * present on the generic route.
+     */
+    soraTransactionRunId?: string;
     swarmCollector?: boolean;
   } & VisibleSessionsSpawnDeps &
     SpawnedToolContext,
@@ -549,10 +558,28 @@ export function createSessionsSpawnTool(
           lightContext,
           expectsCompletionMessage,
           attachments,
+          cwd,
+          thread,
+          mode,
+          cleanup,
+          sandbox,
+          context,
+          lightContext,
+          expectsCompletionMessage,
+          attachments,
           attachMountPath:
             params.attachAs && typeof params.attachAs === "object"
               ? readStringParam(params.attachAs as Record<string, unknown>, "mountPath")
               : undefined,
+          // B1 governed envelope: set INTERNALLY by the tool when the
+          // embedded runner-owned tool construction boundary resolved a
+          // governed transaction run id through the runtime possession carry.
+          // The tool schema never exposes `sora` to the model, so this branch
+          // is unreachable from model args / RPC / HTTP data. capabilityId and
+          // delegationId are intentionally absent (B1 governed mint route).
+          ...(opts?.soraTransactionRunId
+            ? { sora: { capabilityId: undefined, delegationId: undefined } }
+            : {}),
         },
         {
           agentSessionKey: opts?.agentSessionKey,
@@ -574,6 +601,11 @@ export function createSessionsSpawnTool(
           inheritedToolAllowlist: opts?.inheritedToolAllowlist,
           inheritedToolDenylist: opts?.inheritedToolDenylist,
           requesterRunId: opts?.requesterRunId,
+          // Runner-owned governed transaction run id carried through the
+          // internal spawn context (never a model arg). Only set when the
+          // requester possesses a live governed parent role at the tool
+          // boundary; ordinary S21/S22 spawns never set it.
+          soraTransactionRunId: opts?.soraTransactionRunId,
         },
       );
 
